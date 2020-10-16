@@ -44,8 +44,6 @@ fn main() {
     #[cfg(feature = "edit")]
     if let Command::Edit = options.command {
         let mut editor = Editor::attach(io::stdout()).unwrap();
-        loop {
-            editor.render();
-        }
+        let _ = editor.run();
     }
 }
