@@ -1,0 +1,23 @@
+[package]
+name = "nym"
+version = "0.0.0"
+authors = ["Sean Olson <olson.sean.k@gmail.com>"]
+edition = "2018"
+
+[features]
+default = ["edit"]
+edit = ["crossterm", "tui"]
+
+[dependencies]
+regex = "^1.4.0"
+structopt = "^0.3.20"
+
+[dependencies.crossterm]
+optional = true
+version = "^0.17.0" # Must agree with `tui` integration.
+
+[dependencies.tui]
+default-features = false
+features = ["crossterm"]
+optional = true
+version = "^0.12.0"
