@@ -1,5 +1,4 @@
 use regex::Regex;
-use std::io;
 use structopt::StructOpt;
 
 #[cfg(feature = "edit")]
@@ -39,15 +38,20 @@ struct Transform {
 
 fn main() {
     let options = Options::from_args();
-    #[cfg(feature = "edit")]
-    if let Command::Edit = options.command {
-        let mut edit = Edit::attach(io::stdout()).unwrap();
-        let _ = edit.execute();
-    }
-    if let Command::Move { transform } = options.command {
-        let Transform { from, to } = transform;
-        let to = Pattern::parse(&to).unwrap();
-        println!("{:?}", from);
-        println!("{:?}", to);
+    match options.command {
+        #[cfg(feature = "edit")]
+        Command::Edit => {
+            use std::io;
+
+            let mut edit = Edit::attach(io::stdout()).unwrap();
+            let _ = edit.execute();
+        }
+        Command::Move { transform } => {
+            let Transform { from, to } = transform;
+            let to = Pattern::parse(&to).unwrap();
+            println!("{:?}", from);
+            println!("{:?}", to);
+        }
+        _ => {}
     }
 }
