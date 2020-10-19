@@ -34,8 +34,7 @@ enum Command {
 #[structopt(rename_all = "kebab-case")]
 struct Transform {
     from: Regex,
-    // TODO: Provide a type for referencing matches that implements `FromStr`.
-    to: Pattern,
+    to: String,
 }
 
 fn main() {
@@ -46,6 +45,9 @@ fn main() {
         let _ = edit.execute();
     }
     if let Command::Move { transform } = options.command {
-        println!("{:?}", transform);
+        let Transform { from, to } = transform;
+        let to = Pattern::parse(&to).unwrap();
+        println!("{:?}", from);
+        println!("{:?}", to);
     }
 }

@@ -10,25 +10,29 @@ use nom::error::{ErrorKind, ParseError};
 use nom::multi;
 use nom::sequence;
 use nom::{self, IResult};
+use std::borrow::Cow;
 use std::io;
 use std::str::FromStr;
 
 #[derive(Clone, Debug)]
-enum Component {
-    Literal(String),
-    Capture(usize),
+enum Capture<'a> {
+    Index(usize),
+    Label(Cow<'a, str>),
 }
 
 #[derive(Clone, Debug)]
-pub struct Pattern {
-    components: Vec<Component>,
+enum Component<'a> {
+    Literal(Cow<'a, str>),
+    Capture(Capture<'a>), // TODO:
 }
 
-impl FromStr for Pattern {
-    // TODO: Use a bona fide error type.
-    type Err = io::Error;
+#[derive(Clone, Debug)]
+pub struct Pattern<'a> {
+    components: Vec<Component<'a>>,
+}
 
-    fn from_str(text: &str) -> Result<Self, Self::Err> {
+impl<'a> Pattern<'a> {
+    pub fn parse(text: &'a str) -> Result<Self, io::Error> {
         fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
         where
             E: ParseError<&'i str>,
@@ -40,7 +44,7 @@ impl FromStr for Pattern {
                     ),
                     move |text: &'_ str| !text.is_empty(),
                 ),
-                move |text: &'_ str| Component::Literal(text.to_string()),
+                move |text: &'_ str| Component::Literal(Cow::Borrowed(text)),
             )(input)
         }
 
@@ -52,12 +56,12 @@ impl FromStr for Pattern {
                 sequence::preceded(
                     character::char('#'),
                     sequence::delimited(
-                        character::char('['),
+                        character::char('{'),
                         character::digit1,
-                        character::char(']'),
+                        character::char('}'),
                     ),
                 ),
-                move |index| usize::from_str_radix(index, 10).map(|index| Component::Capture(index)),
+                move |index| usize::from_str_radix(index, 10).map(|index| Component::Capture(Capture::Index(index))),
             )(input)
         }
 
