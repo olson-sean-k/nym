@@ -99,13 +99,9 @@ impl<'a> Pattern<'a> {
         where
             E: ParseError<&'i str>,
         {
-            combinator::map(
-                combinator::verify(
-                    bytes::take_while(move |x| x != '{'),
-                    move |text: &'_ str| !text.is_empty(),
-                ),
-                move |text: &'_ str| Component::from(text),
-            )(input)
+            combinator::map(bytes::is_not("{"), move |text: &'_ str| {
+                Component::from(text)
+            })(input)
         }
 
         fn capture<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
