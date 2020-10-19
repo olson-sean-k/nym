@@ -1,9 +1,8 @@
 use anyhow::Error;
 use regex::Regex;
+use std::path::PathBuf;
 use structopt::StructOpt;
 
-#[cfg(feature = "edit")]
-use nym::edit::Edit;
 use nym::Pattern;
 
 #[derive(Debug, StructOpt)]
@@ -20,19 +19,30 @@ struct Options {
 enum Command {
     Copy {
         #[structopt(flatten)]
-        transform: Transform,
+        immediate: Immediate,
     },
     #[cfg(feature = "edit")]
     Edit,
     Move {
         #[structopt(flatten)]
-        transform: Transform,
+        immediate: Immediate,
     },
 }
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
+struct Immediate {
+    #[structopt(long = "--working-dir", short = "-C", default_value = ".")]
+    directory: PathBuf,
+    #[structopt(flatten)]
+    transform: Transform,
+}
+
+#[derive(Debug, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
 struct Transform {
+    #[structopt(long = "--recursive", short = "-R")]
+    recursive: bool,
     from: Regex,
     to: String,
 }
@@ -44,14 +54,15 @@ fn main() -> Result<(), Error> {
         Command::Edit => {
             use std::io;
 
+            use nym::edit::Edit;
+
             let mut edit = Edit::attach(io::stdout())?;
             edit.execute()?;
         }
-        Command::Move { transform } => {
-            let Transform { from, to } = transform;
+        Command::Move { immediate: Immediate { transform, .. }, .. } => {
+            let Transform { from, to, .. } = transform;
             let to = Pattern::parse(&to)?;
-            println!("{:?}", from);
-            println!("{:?}", to);
+            println!("{:?} -> {:?}", from, to);
         }
         _ => {}
     }

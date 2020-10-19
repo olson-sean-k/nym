@@ -1,6 +1,7 @@
 pub mod copy;
 pub mod edit;
 pub mod r#move;
+pub mod transform;
 
 use nom;
 use nom::error::ErrorKind;
@@ -9,14 +10,16 @@ use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
-pub enum TransformError {
+pub enum PatternError {
+    #[error("capture not found in from-regex")]
+    CaptureNotFound,
     #[error("failed to parse to-pattern")]
-    PatternParse,
+    Parse,
 }
 
-impl<I> From<nom::Err<(I, ErrorKind)>> for TransformError {
+impl<I> From<nom::Err<(I, ErrorKind)>> for PatternError {
     fn from(_: nom::Err<(I, ErrorKind)>) -> Self {
-        TransformError::PatternParse
+        PatternError::Parse
     }
 }
 
@@ -103,31 +106,30 @@ impl<'a> Pattern<'a> {
 }
 
 impl<'a> Pattern<'a> {
-    pub fn parse(text: &'a str) -> Result<Self, TransformError> {
+    pub fn parse(text: &'a str) -> Result<Self, PatternError> {
         use nom::bytes::complete as bytes;
         use nom::character::complete as character;
         use nom::error::ParseError;
         use nom::{branch, combinator, multi, sequence, IResult};
 
+        // TODO: Support escaping captures.
         fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
         where
             E: ParseError<&'i str>,
         {
-            combinator::map(bytes::is_not("{"), move |text: &'_ str| {
-                Component::from(text)
-            })(input)
+            combinator::map(bytes::is_not("{"), |text: &'_ str| Component::from(text))(input)
         }
 
         fn capture<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
         where
             E: ParseError<&'i str>,
         {
-            let index = move |text: &'i str| {
+            let index = |text: &'i str| {
                 usize::from_str_radix(text, 10)
                     .map(|index| Component::from(Capture::from(index)))
                     .ok()
             };
-            let name = move |text: &'i str| Some(Component::from(Capture::from(text)));
+            let name = |text: &'i str| Some(Component::from(Capture::from(text)));
             sequence::delimited(
                 character::char('{'),
                 branch::alt((
@@ -165,7 +167,7 @@ impl<'a> Pattern<'a> {
 }
 
 impl FromStr for Pattern<'static> {
-    type Err = TransformError;
+    type Err = PatternError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         Pattern::parse(text).map(|pattern| pattern.into_owned())
