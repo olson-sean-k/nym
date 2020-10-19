@@ -1,6 +1,5 @@
 #![cfg(feature = "edit")]
 
-use crossterm;
 use crossterm::event::{self, Event, KeyCode};
 use crossterm::terminal;
 use std::io::{self, Write};
