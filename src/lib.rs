@@ -2,9 +2,23 @@ pub mod copy;
 pub mod edit;
 pub mod r#move;
 
+use nom;
+use nom::error::ErrorKind;
 use std::borrow::Cow;
-use std::io;
 use std::str::FromStr;
+use thiserror::Error;
+
+#[derive(Clone, Debug, Error)]
+pub enum TransformError {
+    #[error("failed to parse to-pattern")]
+    PatternParse,
+}
+
+impl<I> From<nom::Err<(I, ErrorKind)>> for TransformError {
+    fn from(_: nom::Err<(I, ErrorKind)>) -> Self {
+        TransformError::PatternParse
+    }
+}
 
 #[derive(Clone, Debug)]
 enum Capture<'a> {
@@ -89,10 +103,10 @@ impl<'a> Pattern<'a> {
 }
 
 impl<'a> Pattern<'a> {
-    pub fn parse(text: &'a str) -> Result<Self, io::Error> {
+    pub fn parse(text: &'a str) -> Result<Self, TransformError> {
         use nom::bytes::complete as bytes;
         use nom::character::complete as character;
-        use nom::error::{ErrorKind, ParseError};
+        use nom::error::ParseError;
         use nom::{branch, combinator, multi, sequence, IResult};
 
         fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
@@ -144,15 +158,14 @@ impl<'a> Pattern<'a> {
             ))(input)
         }
 
-        // TODO: Do not unwrap.
-        Ok(pattern::<(_, ErrorKind)>(text)
+        pattern::<(_, ErrorKind)>(text)
             .map(|(_, pattern)| pattern)
-            .expect("PATTERN"))
+            .map_err(Into::into)
     }
 }
 
 impl FromStr for Pattern<'static> {
-    type Err = io::Error;
+    type Err = TransformError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         Pattern::parse(text).map(|pattern| pattern.into_owned())

@@ -1,3 +1,4 @@
+use anyhow::Error;
 use regex::Regex;
 use structopt::StructOpt;
 
@@ -36,22 +37,23 @@ struct Transform {
     to: String,
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let options = Options::from_args();
     match options.command {
         #[cfg(feature = "edit")]
         Command::Edit => {
             use std::io;
 
-            let mut edit = Edit::attach(io::stdout()).unwrap();
-            let _ = edit.execute();
+            let mut edit = Edit::attach(io::stdout())?;
+            edit.execute()?;
         }
         Command::Move { transform } => {
             let Transform { from, to } = transform;
-            let to = Pattern::parse(&to).unwrap();
+            let to = Pattern::parse(&to)?;
             println!("{:?}", from);
             println!("{:?}", to);
         }
         _ => {}
     }
+    Ok(())
 }
