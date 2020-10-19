@@ -1,11 +1,10 @@
-mod edit;
-
 use regex::Regex;
 use std::io;
 use structopt::StructOpt;
 
 #[cfg(feature = "edit")]
-use crate::edit::Editor;
+use nym::edit::Edit;
+use nym::Pattern;
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
@@ -36,14 +35,17 @@ enum Command {
 struct Transform {
     from: Regex,
     // TODO: Provide a type for referencing matches that implements `FromStr`.
-    to: String,
+    to: Pattern,
 }
 
 fn main() {
     let options = Options::from_args();
     #[cfg(feature = "edit")]
     if let Command::Edit = options.command {
-        let mut editor = Editor::attach(io::stdout()).unwrap();
-        let _ = editor.run();
+        let mut edit = Edit::attach(io::stdout()).unwrap();
+        let _ = edit.execute();
+    }
+    if let Command::Move { transform } = options.command {
+        println!("{:?}", transform);
     }
 }

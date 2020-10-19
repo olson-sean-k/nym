@@ -8,26 +8,27 @@ use tui::backend::CrosstermBackend;
 use tui::terminal::Terminal;
 use tui::widgets::{Block, Borders};
 
-pub struct Editor<O>
+pub struct Edit<W>
 where
-    O: Write,
+    W: Write,
 {
-    terminal: Terminal<CrosstermBackend<O>>,
+    terminal: Terminal<CrosstermBackend<W>>,
 }
 
-impl<O> Editor<O>
+impl<W> Edit<W>
 where
-    O: Write,
+    W: Write,
 {
-    pub fn attach(out: O) -> Result<Self, io::Error> {
+    pub fn attach(out: W) -> Result<Self, io::Error> {
         // TODO: Don't unwrap.
         terminal::enable_raw_mode().unwrap();
         let terminal = Terminal::new(CrosstermBackend::new(out))?;
-        Ok(Editor { terminal })
+        Ok(Edit { terminal })
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
-        'run: loop {
+    pub fn execute(&mut self) -> io::Result<()> {
+        self.terminal.clear()?;
+        loop {
             self.terminal.draw(|frame| {
                 let size = frame.size();
                 let block = Block::default().title("nym").borders(Borders::ALL);
@@ -37,7 +38,7 @@ where
             match event::read().unwrap() {
                 Event::Key(event) => match event.code {
                     KeyCode::Char('q') => {
-                        break 'run;
+                        break;
                     }
                     _ => {}
                 },
@@ -48,9 +49,9 @@ where
     }
 }
 
-impl<O> Drop for Editor<O>
+impl<W> Drop for Edit<W>
 where
-    O: Write,
+    W: Write,
 {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();

@@ -4,11 +4,17 @@ version = "0.0.0"
 authors = ["Sean Olson <olson.sean.k@gmail.com>"]
 edition = "2018"
 
+[lib]
+
+[[bin]]
+name = "nym"
+
 [features]
 default = ["edit"]
 edit = ["crossterm", "tui"]
 
 [dependencies]
+nom = "^5.1.0"
 regex = "^1.4.0"
 structopt = "^0.3.20"
 
