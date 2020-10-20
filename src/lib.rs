@@ -1,5 +1,5 @@
 pub mod copy;
-pub mod edit;
+//pub mod edit;
 pub mod r#move;
 pub mod transform;
 
@@ -24,7 +24,7 @@ impl<I> From<nom::Err<(I, ErrorKind)>> for PatternError {
 }
 
 #[derive(Clone, Debug)]
-enum Capture<'a> {
+pub enum Capture<'a> {
     Index(usize),
     Name(Cow<'a, str>),
 }
@@ -57,7 +57,7 @@ impl From<String> for Capture<'static> {
 }
 
 #[derive(Clone, Debug)]
-enum Component<'a> {
+pub enum Component<'a> {
     Capture(Capture<'a>), // TODO:
     Literal(Cow<'a, str>),
 }
@@ -91,7 +91,7 @@ impl From<String> for Component<'static> {
 
 #[derive(Clone, Debug)]
 pub struct Pattern<'a> {
-    components: Vec<Component<'a>>,
+    pub components: Vec<Component<'a>>,
 }
 
 impl<'a> Pattern<'a> {
@@ -133,6 +133,7 @@ impl<'a> Pattern<'a> {
             sequence::delimited(
                 character::char('{'),
                 branch::alt((
+                    combinator::value(Component::from(Capture::from(0)), character::space0),
                     combinator::map_opt(
                         sequence::preceded(character::char('#'), character::digit1),
                         index,
