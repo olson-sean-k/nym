@@ -11,8 +11,6 @@ use nym::Pattern;
 struct Options {
     #[structopt(subcommand)]
     command: Command,
-    from: Regex,
-    to: String,
     #[structopt(long = "--working-dir", short = "-C", default_value = ".")]
     directory: PathBuf,
     #[structopt(long = "--recursive", short = "-R")]
@@ -24,18 +22,31 @@ struct Options {
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 enum Command {
-    Copy,
-    Move,
+    Copy {
+        #[structopt(flatten)]
+        targets: CommandTargets,
+    },
+    Move {
+        #[structopt(flatten)]
+        targets: CommandTargets,
+    },
+}
+
+#[derive(Debug, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+struct CommandTargets {
+    from: Regex,
+    to: String,
 }
 
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
     match options.command {
-        Command::Move => {
-            let to = Pattern::parse(&options.to)?;
-            println!("{:?} -> {:?}", options.from, to);
+        Command::Move { targets, .. } => {
+            let to = Pattern::parse(&targets.to)?;
+            println!("{:?} -> {:?}", targets.from, to);
             let transform = Transform {
-                from: options.from,
+                from: targets.from,
                 to,
             };
             let renames = transform.scan(options.directory)?;

@@ -23,7 +23,7 @@ impl<'a> Transform<'a> {
                     .file_name()
                     .and_then(|name| self.from.captures(name.to_str().unwrap()))
                 {
-                    let source = entry.path().to_path_buf();
+                    let source = entry.path().canonicalize()?;
                     let mut destination = source.clone();
                     destination.pop();
                     let mut head = String::new();
