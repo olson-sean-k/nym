@@ -133,7 +133,9 @@ impl<'a> Pattern<'a> {
             sequence::delimited(
                 character::char('{'),
                 branch::alt((
-                    combinator::value(Component::from(Capture::from(0)), character::space0),
+                    // TODO: Support empty braces. Note that using `space0`
+                    //       conflicts with the alternate parsers.
+                    combinator::value(Component::from(Capture::from(0)), character::space1),
                     combinator::map_opt(
                         sequence::preceded(character::char('#'), character::digit1),
                         index,
