@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::io;
 
-use crate::Pattern;
+use crate::pattern::Pattern;
 
 pub struct Move<'a> {
     from: Regex,

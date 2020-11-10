@@ -5,7 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use crate::{Capture, Component, Pattern};
+use crate::pattern::{Capture, Component, Pattern};
 
 pub struct Transform<'a> {
     pub from: Regex,
@@ -15,7 +15,7 @@ pub struct Transform<'a> {
 impl<'a> Transform<'a> {
     pub fn scan(&self, directory: impl AsRef<Path>) -> io::Result<BiMap<PathBuf, PathBuf>> {
         let mut renames = BiMap::new();
-        for entry in WalkDir::new(directory).follow_links(false).max_depth(1) {
+        for entry in WalkDir::new(directory).follow_links(false).min_depth(1).max_depth(1) {
             let entry = entry?;
             if entry.file_type().is_file() {
                 if let Some(captures) = entry
@@ -27,7 +27,7 @@ impl<'a> Transform<'a> {
                     let mut destination = source.clone();
                     destination.pop();
                     let mut head = String::new();
-                    for component in self.to.components.iter() {
+                    for component in self.to.components() {
                         match component {
                             Component::Capture(capture) => match capture {
                                 Capture::Index(index) => {

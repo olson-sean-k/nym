@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 use nym::transform::Transform;
-use nym::Pattern;
+use nym::pattern::Pattern;
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
