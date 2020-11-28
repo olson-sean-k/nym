@@ -222,6 +222,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "normpath"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01f55d1a21e95222466b88a22a2d20e3d75effe221d8ed20ffdec03f0cf6f95e"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -238,6 +247,7 @@ dependencies = [
  "bimap",
  "crossterm",
  "nom",
+ "normpath",
  "regex",
  "structopt",
  "thiserror",

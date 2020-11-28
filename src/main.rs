@@ -1,10 +1,11 @@
 use anyhow::Error;
+use bimap::BiMap;
 use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use nym::transform::Transform;
 use nym::pattern::Pattern;
+use nym::transform::Transform;
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
@@ -24,17 +25,17 @@ struct Options {
 enum Command {
     Copy {
         #[structopt(flatten)]
-        targets: CommandTargets,
+        transform: UnparsedTransform,
     },
     Move {
         #[structopt(flatten)]
-        targets: CommandTargets,
+        transform: UnparsedTransform,
     },
 }
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
-struct CommandTargets {
+struct UnparsedTransform {
     from: Regex,
     to: String,
 }
@@ -42,15 +43,15 @@ struct CommandTargets {
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
     match options.command {
-        Command::Move { targets, .. } => {
-            let to = Pattern::parse(&targets.to)?;
-            println!("{:?} -> {:?}", targets.from, to);
+        Command::Move { transform, .. } => {
+            let to = Pattern::parse(&transform.to)?;
+            println!("{:?} -> {:?}", transform.from, to);
             let transform = Transform {
-                from: targets.from,
+                from: transform.from,
                 to,
             };
-            let renames = transform.scan(options.directory)?;
-            println!("{:?}", renames);
+            let manifest: BiMap<_, _> = transform.scan(options.directory, usize::MAX)?;
+            println!("{:?}", manifest);
         }
         _ => {}
     }

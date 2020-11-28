@@ -1,11 +1,30 @@
 use bimap::BiMap;
+use normpath::PathExt as _;
 use regex::Regex;
-use std::fs;
-use std::io;
+use std::io::{self, Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::pattern::{Capture, Component, Pattern};
+
+pub trait Manifest: Default + IntoIterator<Item = (PathBuf, PathBuf)> {
+    fn insert(
+        &mut self,
+        source: impl Into<PathBuf>,
+        destination: impl Into<PathBuf>,
+    ) -> io::Result<()>;
+}
+
+impl Manifest for BiMap<PathBuf, PathBuf> {
+    fn insert(
+        &mut self,
+        source: impl Into<PathBuf>,
+        destination: impl Into<PathBuf>,
+    ) -> io::Result<()> {
+        self.insert_no_overwrite(source.into(), destination.into())
+            .map_err(|_| Error::from(ErrorKind::Other))
+    }
+}
 
 pub struct Transform<'a> {
     pub from: Regex,
@@ -13,9 +32,16 @@ pub struct Transform<'a> {
 }
 
 impl<'a> Transform<'a> {
-    pub fn scan(&self, directory: impl AsRef<Path>) -> io::Result<BiMap<PathBuf, PathBuf>> {
-        let mut renames = BiMap::new();
-        for entry in WalkDir::new(directory).follow_links(false).min_depth(1).max_depth(1) {
+    pub fn scan<M>(&self, directory: impl AsRef<Path>, depth: usize) -> io::Result<M>
+    where
+        M: Manifest,
+    {
+        let mut manifest = M::default();
+        for entry in WalkDir::new(directory.as_ref().normalize()?)
+            .follow_links(false)
+            .min_depth(1)
+            .max_depth(depth)
+        {
             let entry = entry?;
             if entry.file_type().is_file() {
                 if let Some(captures) = entry
@@ -23,8 +49,8 @@ impl<'a> Transform<'a> {
                     .file_name()
                     .and_then(|name| self.from.captures(name.to_str().unwrap()))
                 {
-                    let source = entry.path().canonicalize()?;
-                    let mut destination = source.clone();
+                    let source = entry.path();
+                    let mut destination = entry.path().to_path_buf();
                     destination.pop();
                     let mut head = String::new();
                     for component in self.to.components() {
@@ -43,12 +69,10 @@ impl<'a> Transform<'a> {
                         }
                     }
                     destination.push(head);
-                    renames
-                        .insert_no_overwrite(source, destination)
-                        .expect("redundant");
+                    manifest.insert(source, destination)?;
                 }
             }
         }
-        Ok(renames)
+        Ok(manifest)
     }
 }
