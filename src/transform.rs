@@ -1,11 +1,11 @@
 use bimap::BiMap;
 use normpath::PathExt as _;
-use regex::Regex;
 use std::io::{self, Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use crate::pattern::{Capture, Component, Pattern};
+use crate::pattern::from::FromPattern;
+use crate::pattern::to::ToPattern;
 
 pub trait Manifest: Default + IntoIterator<Item = (PathBuf, PathBuf)> {
     fn insert(
@@ -26,13 +26,13 @@ impl Manifest for BiMap<PathBuf, PathBuf> {
     }
 }
 
-pub struct Transform<'a> {
-    pub from: Regex,
-    pub to: Pattern<'a>,
+pub struct Transform<'t> {
+    pub from: FromPattern,
+    pub to: ToPattern<'t>,
 }
 
-impl<'a> Transform<'a> {
-    pub fn scan<M>(&self, directory: impl AsRef<Path>, depth: usize) -> io::Result<M>
+impl<'t> Transform<'t> {
+    pub fn read<M>(&self, directory: impl AsRef<Path>, depth: usize) -> io::Result<M>
     where
         M: Manifest,
     {
@@ -44,31 +44,15 @@ impl<'a> Transform<'a> {
         {
             let entry = entry?;
             if entry.file_type().is_file() {
-                if let Some(captures) = entry
+                if let Some(find) = entry
                     .path()
                     .file_name()
-                    .and_then(|name| self.from.captures(name.to_str().unwrap()))
+                    .and_then(|name| self.from.find(name.to_str().unwrap()))
                 {
                     let source = entry.path();
-                    let mut destination = entry.path().to_path_buf();
+                    let mut destination = source.to_path_buf();
                     destination.pop();
-                    let mut head = String::new();
-                    for component in self.to.components() {
-                        match component {
-                            Component::Capture(capture) => match capture {
-                                Capture::Index(index) => {
-                                    head.push_str(captures.get(*index).unwrap().as_str());
-                                }
-                                Capture::Name(name) => {
-                                    head.push_str(captures.name(name).unwrap().as_str());
-                                }
-                            },
-                            Component::Literal(text) => {
-                                head.push_str(text);
-                            }
-                        }
-                    }
-                    destination.push(head);
+                    destination.push(self.to.join(&find).unwrap()); // TODO:
                     manifest.insert(source, destination)?;
                 }
             }

@@ -1,15 +1,15 @@
 use regex::Regex;
 use std::io;
 
-use crate::pattern::Pattern;
+use crate::pattern::to::ToPattern;
 
 pub struct Move<'a> {
     from: Regex,
-    to: Pattern<'a>,
+    to: ToPattern<'a>,
 }
 
 impl<'a> Move<'a> {
-    pub fn new(from: Regex, to: Pattern<'a>) -> Self {
+    pub fn new(from: Regex, to: ToPattern<'a>) -> Self {
         Move { from, to }
     }
 

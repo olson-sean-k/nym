@@ -4,7 +4,7 @@ use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use nym::pattern::Pattern;
+use nym::pattern::to::ToPattern;
 use nym::transform::Transform;
 
 #[derive(Debug, StructOpt)]
@@ -44,13 +44,13 @@ fn main() -> Result<(), Error> {
     let options = Options::from_args();
     match options.command {
         Command::Move { transform, .. } => {
-            let to = Pattern::parse(&transform.to)?;
+            let to = ToPattern::parse(&transform.to)?;
             println!("{:?} -> {:?}", transform.from, to);
             let transform = Transform {
-                from: transform.from,
+                from: transform.from.into(),
                 to,
             };
-            let manifest: BiMap<_, _> = transform.scan(options.directory, usize::MAX)?;
+            let manifest: BiMap<_, _> = transform.read(options.directory, usize::MAX)?;
             println!("{:?}", manifest);
         }
         _ => {}

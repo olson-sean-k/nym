@@ -2,24 +2,15 @@ use nom;
 use nom::error::ErrorKind;
 use std::borrow::Cow;
 use std::str::FromStr;
-use thiserror::Error;
 
-#[derive(Clone, Debug, Error)]
-pub enum PatternError {
-    #[error("capture not found in from-regex")]
-    CaptureNotFound,
-    #[error("failed to parse to-pattern")]
-    Parse,
-}
+use crate::pattern::from::{Find, Selector};
+use crate::pattern::PatternError;
 
-impl<I> From<nom::Err<(I, ErrorKind)>> for PatternError {
-    fn from(_: nom::Err<(I, ErrorKind)>) -> Self {
-        PatternError::Parse
-    }
-}
+use Selector::ByIndex;
+use Selector::ByName;
 
 #[derive(Clone, Debug)]
-pub enum Capture<'a> {
+enum Capture<'a> {
     Index(usize),
     Name(Cow<'a, str>),
 }
@@ -52,7 +43,7 @@ impl From<String> for Capture<'static> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Component<'a> {
+enum Component<'a> {
     Capture(Capture<'a>), // TODO:
     Literal(Cow<'a, str>),
 }
@@ -85,26 +76,48 @@ impl From<String> for Component<'static> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Pattern<'a> {
+pub struct ToPattern<'a> {
     components: Vec<Component<'a>>,
 }
 
-impl<'a> Pattern<'a> {
-    pub fn into_owned(self) -> Pattern<'static> {
-        let Pattern { components } = self;
+impl<'a> ToPattern<'a> {
+    pub fn into_owned(self) -> ToPattern<'static> {
+        let ToPattern { components } = self;
         let components = components
             .into_iter()
             .map(|component| component.into_owned())
             .collect();
-        Pattern { components }
+        ToPattern { components }
     }
 
-    pub fn components(&self) -> &[Component<'a>] {
-        self.components.as_ref()
+    pub fn join(&self, find: &Find<'_>) -> Result<String, PatternError> {
+        let mut output = String::new();
+        for component in &self.components {
+            match *component {
+                Component::Capture(ref capture) => match capture {
+                    Capture::Index(ref index) => {
+                        output.push_str(
+                            find.capture(ByIndex(*index))
+                                .ok_or(PatternError::CaptureNotFound)?,
+                        );
+                    }
+                    Capture::Name(ref name) => {
+                        output.push_str(
+                            find.capture(ByName(name))
+                                .ok_or(PatternError::CaptureNotFound)?,
+                        );
+                    }
+                },
+                Component::Literal(ref text) => {
+                    output.push_str(text);
+                }
+            }
+        }
+        Ok(output)
     }
 }
 
-impl<'a> Pattern<'a> {
+impl<'a> ToPattern<'a> {
     pub fn parse(text: &'a str) -> Result<Self, PatternError> {
         use nom::bytes::complete as bytes;
         use nom::character::complete as character;
@@ -152,13 +165,13 @@ impl<'a> Pattern<'a> {
             )(input)
         }
 
-        fn pattern<'i, E>(input: &'i str) -> IResult<&'i str, Pattern, E>
+        fn pattern<'i, E>(input: &'i str) -> IResult<&'i str, ToPattern, E>
         where
             E: ParseError<&'i str>,
         {
             combinator::all_consuming(combinator::map(
                 multi::many1(branch::alt((literal, capture))),
-                move |components| Pattern { components },
+                move |components| ToPattern { components },
             ))(input)
         }
 
@@ -168,16 +181,10 @@ impl<'a> Pattern<'a> {
     }
 }
 
-impl<'a> AsRef<[Component<'a>]> for Pattern<'a> {
-    fn as_ref(&self) -> &[Component<'a>] {
-        self.components()
-    }
-}
-
-impl FromStr for Pattern<'static> {
+impl FromStr for ToPattern<'static> {
     type Err = PatternError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Pattern::parse(text).map(|pattern| pattern.into_owned())
+        ToPattern::parse(text).map(|pattern| pattern.into_owned())
     }
 }
