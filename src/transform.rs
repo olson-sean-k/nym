@@ -4,8 +4,7 @@ use std::io::{self, Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use crate::pattern::from::FromPattern;
-use crate::pattern::to::ToPattern;
+use crate::pattern::{FromPattern, ToPattern};
 
 pub trait Manifest: Default + IntoIterator<Item = (PathBuf, PathBuf)> {
     fn insert(

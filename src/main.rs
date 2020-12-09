@@ -4,7 +4,7 @@ use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use nym::pattern::to::ToPattern;
+use nym::pattern::ToPattern;
 use nym::transform::Transform;
 
 #[derive(Debug, StructOpt)]
