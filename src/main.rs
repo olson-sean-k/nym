@@ -42,6 +42,7 @@ struct UnparsedTransform {
 
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
+    let depth = if options.recursive { usize::MAX } else { 1 };
     match options.command {
         Command::Move { transform, .. } => {
             let to = ToPattern::parse(&transform.to)?;
@@ -50,7 +51,7 @@ fn main() -> Result<(), Error> {
                 from: transform.from.into(),
                 to,
             };
-            let manifest: BiMap<_, _> = transform.read(options.directory, usize::MAX)?;
+            let manifest: BiMap<_, _> = transform.read(options.directory, depth)?;
             println!("{:?}", manifest);
         }
         _ => {}
