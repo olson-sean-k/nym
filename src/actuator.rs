@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::transform::{Bijective, Manifest};
+use crate::manifest::{Bijective, Manifest};
 
 pub trait Actuator {
     type Manifest: Manifest;

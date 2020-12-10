@@ -103,6 +103,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "either"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
+
+[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -135,6 +141,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5aca5565f760fb5b220e499d72710ed156fdb74e631659e99377d9ebfbd13ae8"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "itertools"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "284f18f85651fe11e8a991b2adb42cb078325c996ed026d994719efcfca1d54b"
+dependencies = [
+ "either",
 ]
 
 [[package]]
@@ -194,7 +209,9 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "bimap",
+ "console",
  "dialoguer",
+ "itertools",
  "nom",
  "normpath",
  "regex",
@@ -434,7 +451,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1bca196a5c5a7bc57a5c92809cf5670e16bcbca3bf0d09ef47150bf97221f6f"
 dependencies = [
  "smawk",
- "terminal_size",
  "unicode-width",
 ]
 

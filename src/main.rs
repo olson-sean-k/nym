@@ -1,11 +1,13 @@
 use anyhow::Error;
+use console::Term;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
 use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use nym::actuator::{Actuator, Move};
+use nym::actuator::{Actuator, Copy, Move};
+use nym::manifest::Manifest;
 use nym::pattern::ToPattern;
 use nym::transform::Transform;
 
@@ -53,17 +55,17 @@ impl Executor {
     where
         A: Actuator,
     {
+        let mut terminal = Term::stderr();
         let manifest: A::Manifest = transform.read(&self.directory, self.depth)?;
-        print!("{}", manifest);
+        manifest.print(&mut terminal)?;
         if self.force
             || Confirm::with_theme(&ColorfulTheme::default())
                 .with_prompt("Continue?")
                 .default(false)
                 .show_default(true)
                 .wait_for_newline(true)
-                .interact()?
+                .interact_on(&terminal)?
         {
-            //println!("{:?}", transform);
             for (source, destination) in manifest {
                 A::write(&source, &destination)?;
             }
@@ -80,6 +82,14 @@ fn main() -> Result<(), Error> {
         force: options.force,
     };
     match options.command {
+        Command::Copy { transform, .. } => {
+            let to = ToPattern::parse(&transform.to)?;
+            let transform = Transform {
+                from: transform.from.into(),
+                to,
+            };
+            executor.execute::<Copy>(&transform)?;
+        }
         Command::Move { transform, .. } => {
             let to = ToPattern::parse(&transform.to)?;
             let transform = Transform {
@@ -88,7 +98,6 @@ fn main() -> Result<(), Error> {
             };
             executor.execute::<Move>(&transform)?;
         }
-        _ => {}
     }
     Ok(())
 }
