@@ -1,9 +1,9 @@
 use anyhow::Error;
-use bimap::BiMap;
 use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+use nym::actuator::{Actuator, Move};
 use nym::pattern::ToPattern;
 use nym::transform::Transform;
 
@@ -40,9 +40,31 @@ struct UnparsedTransform {
     to: String,
 }
 
+struct Executor {
+    directory: PathBuf,
+    depth: usize,
+}
+
+impl Executor {
+    fn execute<A>(&self, transform: &Transform) -> Result<(), Error>
+    where
+        A: Actuator,
+    {
+        let manifest: A::Manifest = transform.read(&self.directory, self.depth)?;
+        //println!("{:?}", transform);
+        for (source, destination) in manifest {
+            A::write(&source, &destination)?;
+        }
+        Ok(())
+    }
+}
+
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
-    let depth = if options.recursive { usize::MAX } else { 1 };
+    let executor = Executor {
+        directory: options.directory,
+        depth: if options.recursive { usize::MAX } else { 1 },
+    };
     match options.command {
         Command::Move { transform, .. } => {
             let to = ToPattern::parse(&transform.to)?;
@@ -50,9 +72,7 @@ fn main() -> Result<(), Error> {
                 from: transform.from.into(),
                 to,
             };
-            let manifest: BiMap<_, _> = transform.read(options.directory, depth)?;
-            println!("{:?}", transform);
-            println!("{:?}", manifest);
+            executor.execute::<Move>(&transform)?;
         }
         _ => {}
     }
