@@ -25,6 +25,7 @@ impl Manifest for BiMap<PathBuf, PathBuf> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Transform<'t> {
     pub from: FromPattern,
     pub to: ToPattern<'t>,

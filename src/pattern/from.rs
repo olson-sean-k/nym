@@ -7,11 +7,13 @@ pub enum Selector<'t> {
     ByName(&'t str),
 }
 
+#[derive(Debug)]
 enum InnerFind<'t> {
     Glob,
     Regex(Captures<'t>),
 }
 
+#[derive(Debug)]
 pub struct Find<'t> {
     inner: InnerFind<'t>,
 }
@@ -37,11 +39,13 @@ impl<'t> From<Captures<'t>> for Find<'t> {
     }
 }
 
+#[derive(Clone, Debug)]
 enum InnerPattern {
     Glob(Glob),
     Regex(Regex),
 }
 
+#[derive(Clone, Debug)]
 pub struct FromPattern {
     inner: InnerPattern,
 }

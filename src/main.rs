@@ -46,12 +46,12 @@ fn main() -> Result<(), Error> {
     match options.command {
         Command::Move { transform, .. } => {
             let to = ToPattern::parse(&transform.to)?;
-            println!("{:?} -> {:?}", transform.from, to);
             let transform = Transform {
                 from: transform.from.into(),
                 to,
             };
             let manifest: BiMap<_, _> = transform.read(options.directory, depth)?;
+            println!("{:?}", transform);
             println!("{:?}", manifest);
         }
         _ => {}
