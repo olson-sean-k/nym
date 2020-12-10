@@ -12,9 +12,11 @@ name = "nym"
 [dependencies]
 anyhow = "^1.0.0"
 bimap = "^0.5.0"
+dialoguer = "^0.7.0"
 nom = "^5.1.0"
 normpath = "^0.1.0"
 regex = "^1.4.0"
 structopt = "^0.3.0"
+textwrap = { version = "^0.13.0", features = ["terminal_size"] }
 thiserror = "^1.0.0"
 walkdir = "^2.3.0"

@@ -1,4 +1,6 @@
 use anyhow::Error;
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::Confirm;
 use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -16,8 +18,8 @@ struct Options {
     directory: PathBuf,
     #[structopt(long = "--recursive", short = "-R")]
     recursive: bool,
-    #[structopt(long = "--help", short = "-h")]
-    help: bool,
+    #[structopt(long = "--force", short = "-f")]
+    force: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -43,6 +45,7 @@ struct UnparsedTransform {
 struct Executor {
     directory: PathBuf,
     depth: usize,
+    force: bool,
 }
 
 impl Executor {
@@ -51,9 +54,19 @@ impl Executor {
         A: Actuator,
     {
         let manifest: A::Manifest = transform.read(&self.directory, self.depth)?;
-        //println!("{:?}", transform);
-        for (source, destination) in manifest {
-            A::write(&source, &destination)?;
+        print!("{}", manifest);
+        if self.force
+            || Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("Continue?")
+                .default(false)
+                .show_default(true)
+                .wait_for_newline(true)
+                .interact()?
+        {
+            //println!("{:?}", transform);
+            for (source, destination) in manifest {
+                A::write(&source, &destination)?;
+            }
         }
         Ok(())
     }
@@ -64,6 +77,7 @@ fn main() -> Result<(), Error> {
     let executor = Executor {
         directory: options.directory,
         depth: if options.recursive { usize::MAX } else { 1 },
+        force: options.force,
     };
     match options.command {
         Command::Move { transform, .. } => {

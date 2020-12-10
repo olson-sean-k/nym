@@ -1,12 +1,16 @@
 use bimap::BiMap;
 use normpath::PathExt as _;
+use std::cmp;
+use std::fmt::{self, Display, Formatter};
 use std::io::{self, Error, ErrorKind};
+use std::iter;
 use std::path::{Path, PathBuf};
+use textwrap;
 use walkdir::WalkDir;
 
 use crate::pattern::{FromPattern, ToPattern};
 
-pub trait Manifest: Default + IntoIterator<Item = (PathBuf, PathBuf)> {
+pub trait Manifest: Default + Display + IntoIterator<Item = (PathBuf, PathBuf)> {
     fn insert(
         &mut self,
         source: impl Into<PathBuf>,
@@ -14,13 +18,78 @@ pub trait Manifest: Default + IntoIterator<Item = (PathBuf, PathBuf)> {
     ) -> io::Result<()>;
 }
 
-impl Manifest for BiMap<PathBuf, PathBuf> {
+#[derive(Clone, Debug, Default)]
+pub struct Bijective {
+    inner: BiMap<PathBuf, PathBuf>,
+}
+
+// TODO: Do not use `Display` to print manifests. Instead, use a more specific
+//       function that interacts with a `console::Term` rather than a
+//       `Formatter` or the raw `Write` trait.
+impl Display for Bijective {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        let margin = ((self.inner.len() as f64).log10() as usize) + 1;
+        let width = textwrap::termwidth(); // TODO: Use `console` for this.
+        let width = cmp::max(width - cmp::min(width, margin + 6), 16);
+        for (n, (source, destination)) in self.inner.iter().enumerate() {
+            let source = source.to_string_lossy();
+            let mut lines = textwrap::wrap(source.as_ref(), width).into_iter();
+            write!(
+                formatter,
+                "{:0>width$} ─┬── {}\n",
+                n,
+                lines.next().unwrap(),
+                width = margin
+            )?;
+            for line in lines {
+                write!(
+                    formatter,
+                    "{: >width$}   {}\n",
+                    "│",
+                    line,
+                    width = margin + 3
+                )?;
+            }
+
+            let destination = destination.to_string_lossy();
+            let mut lines = textwrap::wrap(destination.as_ref(), width).into_iter();
+            write!(
+                formatter,
+                "{: >width$} {}\n",
+                "╰─❯",
+                lines.next().unwrap(),
+                width = margin + 5
+            )?;
+            for line in lines {
+                write!(
+                    formatter,
+                    "{}{}\n",
+                    iter::repeat(" ").take(margin + 6).collect::<String>(),
+                    line,
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl IntoIterator for Bijective {
+    type Item = <BiMap<PathBuf, PathBuf> as IntoIterator>::Item;
+    type IntoIter = <BiMap<PathBuf, PathBuf> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
+impl Manifest for Bijective {
     fn insert(
         &mut self,
         source: impl Into<PathBuf>,
         destination: impl Into<PathBuf>,
     ) -> io::Result<()> {
-        self.insert_no_overwrite(source.into(), destination.into())
+        self.inner
+            .insert_no_overwrite(source.into(), destination.into())
             .map_err(|_| Error::from(ErrorKind::Other))
     }
 }

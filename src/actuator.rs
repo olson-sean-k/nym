@@ -1,9 +1,8 @@
-use bimap::BiMap;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::transform::Manifest;
+use crate::transform::{Bijective, Manifest};
 
 pub trait Actuator {
     type Manifest: Manifest;
@@ -14,7 +13,7 @@ pub trait Actuator {
 pub enum Copy {}
 
 impl Actuator for Copy {
-    type Manifest = BiMap<PathBuf, PathBuf>;
+    type Manifest = Bijective;
 
     fn write(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> io::Result<()> {
         // DANGER: Use at your own risk! Writing to the file system may cause
@@ -28,7 +27,7 @@ impl Actuator for Copy {
 pub enum Move {}
 
 impl Actuator for Move {
-    type Manifest = BiMap<PathBuf, PathBuf>;
+    type Manifest = Bijective;
 
     fn write(source: impl AsRef<Path>, destination: impl AsRef<Path>) -> io::Result<()> {
         // DANGER: Use at your own risk! Writing to the file system may cause
