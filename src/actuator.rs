@@ -1,12 +1,16 @@
-#[allow(unused_imports)]
 use std::fs;
 use std::io::{self, Error, ErrorKind};
 use std::path::Path;
 
 use crate::manifest::{Bijective, Manifest};
 
+// DANGER: Use at your own risk! Writing to the file system may cause
+//         unrecoverable data loss!
+
 pub trait Actuator {
     type Manifest: Manifest;
+
+    const NAME: &'static str;
 
     fn write<P>(
         sources: impl IntoIterator<Item = P>,
@@ -21,6 +25,8 @@ pub enum Copy {}
 impl Actuator for Copy {
     type Manifest = Bijective;
 
+    const NAME: &'static str = "copy";
+
     fn write<P>(
         sources: impl IntoIterator<Item = P>,
         destination: impl AsRef<Path>,
@@ -32,11 +38,7 @@ impl Actuator for Copy {
             .into_iter()
             .next()
             .ok_or_else(|| Error::new(ErrorKind::Other, ""))?;
-        // DANGER: Use at your own risk! Writing to the file system may cause
-        //         unrecoverable data loss!
-        //fs::copy(source, destination)
-        //println!("copy {:?} -> {:?}", source.as_ref(), destination.as_ref());
-        Ok(())
+        fs::copy(source, destination).map(|_| ())
     }
 }
 
@@ -45,6 +47,8 @@ pub enum Move {}
 impl Actuator for Move {
     type Manifest = Bijective;
 
+    const NAME: &'static str = "move";
+
     fn write<P>(
         sources: impl IntoIterator<Item = P>,
         destination: impl AsRef<Path>,
@@ -56,10 +60,6 @@ impl Actuator for Move {
             .into_iter()
             .next()
             .ok_or_else(|| Error::new(ErrorKind::Other, ""))?;
-        // DANGER: Use at your own risk! Writing to the file system may cause
-        //         unrecoverable data loss!
-        //fs::rename(source, destination)
-        //println!("move {:?} -> {:?}", source.as_ref(), destination.as_ref());
-        Ok(())
+        fs::rename(source, destination).map(|_| ())
     }
 }
