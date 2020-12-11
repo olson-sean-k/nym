@@ -90,7 +90,7 @@ impl<'a> ToPattern<'a> {
         ToPattern { components }
     }
 
-    pub fn join(&self, find: &Find<'_>) -> Result<String, PatternError> {
+    pub fn resolve(&self, find: &Find<'_>) -> Result<String, PatternError> {
         let mut output = String::new();
         for component in &self.components {
             match *component {

@@ -33,7 +33,7 @@ impl<'t> Transform<'t> {
                     let source = entry.path();
                     let mut destination = source.to_path_buf();
                     destination.pop();
-                    destination.push(self.to.join(&find).unwrap()); // TODO:
+                    destination.push(self.to.resolve(&find).unwrap()); // TODO:
                     manifest.insert(source, destination)?;
                 }
             }
