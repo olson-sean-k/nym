@@ -61,7 +61,12 @@ impl Executor {
         let manifest: A::Manifest = transform.read(&self.directory, self.depth)?;
         let paths = manifest.into_grouped_paths();
         ui::print_grouped_paths(&mut terminal, &paths)?;
-        if self.force || ui::confirmation(&terminal, "Continue?")? {
+        if self.force
+            || ui::confirmation(
+                &terminal,
+                format!("Ready to {} into {} files. Continue?", A::NAME, paths.len()),
+            )?
+        {
             for (sources, destination) in
                 paths.into_iter().print_actuator_progress(terminal.clone())
             {
