@@ -1,7 +1,7 @@
+mod ui;
+
 use anyhow::Error;
 use console::Term;
-use dialoguer::theme::ColorfulTheme;
-use dialoguer::Confirm;
 use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -10,6 +10,8 @@ use nym::actuator::{Actuator, Copy, Move};
 use nym::manifest::Manifest;
 use nym::pattern::ToPattern;
 use nym::transform::Transform;
+
+use crate::ui::IteratorExt as _;
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
@@ -57,17 +59,13 @@ impl Executor {
     {
         let mut terminal = Term::stderr();
         let manifest: A::Manifest = transform.read(&self.directory, self.depth)?;
-        manifest.print(&mut terminal)?;
-        if self.force
-            || Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt("Continue?")
-                .default(false)
-                .show_default(true)
-                .wait_for_newline(true)
-                .interact_on(&terminal)?
-        {
-            for (source, destination) in manifest {
-                A::write(&source, &destination)?;
+        let paths = manifest.into_grouped_paths();
+        ui::print_grouped_paths(&mut terminal, &paths)?;
+        if self.force || ui::confirmation(&terminal, "Continue?")? {
+            for (sources, destination) in
+                paths.into_iter().print_actuator_progress(terminal.clone())
+            {
+                A::write(sources, destination)?;
             }
         }
         Ok(())
