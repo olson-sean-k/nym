@@ -42,7 +42,7 @@ impl Manifest for Bijective {
     ) -> io::Result<()> {
         self.inner
             .insert_no_overwrite(source.into(), destination.into())
-            .map_err(|_| Error::from(ErrorKind::Other))
+            .map_err(|_| Error::new(ErrorKind::Other, "bijective collision"))
     }
 
     fn into_grouped_paths(self) -> Vec<(Self::SourceGroup, PathBuf)> {

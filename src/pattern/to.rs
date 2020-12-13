@@ -1,4 +1,3 @@
-use nom;
 use nom::error::ErrorKind;
 use std::borrow::Cow;
 use std::str::FromStr;
@@ -129,7 +128,7 @@ impl<'a> ToPattern<'a> {
         where
             E: ParseError<&'i str>,
         {
-            combinator::map(bytes::is_not("{"), |text: &'_ str| Component::from(text))(input)
+            combinator::map(bytes::is_not("{"), From::from)(input)
         }
 
         fn capture<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>

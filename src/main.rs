@@ -2,11 +2,12 @@ mod ui;
 
 use anyhow::Error;
 use console::Term;
+use fool::or;
 use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use nym::actuator::{Actuator, Copy, Move};
+use nym::actuator::{Actuator, Copy, Environment, Move};
 use nym::manifest::Manifest;
 use nym::pattern::ToPattern;
 use nym::transform::Transform;
@@ -61,16 +62,18 @@ impl Executor {
         let manifest: A::Manifest = transform.read(&self.directory, self.depth)?;
         let paths = manifest.into_grouped_paths();
         ui::print_grouped_paths(&mut terminal, &paths)?;
-        if self.force
-            || ui::confirmation(
+        if or!(
+            self.force,
+            ui::confirmation(
                 &terminal,
                 format!("Ready to {} into {} files. Continue?", A::NAME, paths.len()),
-            )?
-        {
+            )?,
+        ) {
+            let environment = Environment::with_root(self.directory.to_path_buf())?;
             for (sources, destination) in
                 paths.into_iter().print_actuator_progress(terminal.clone())
             {
-                A::write(sources, destination)?;
+                environment.write::<A, _, _>(sources, destination)?;
             }
         }
         Ok(())

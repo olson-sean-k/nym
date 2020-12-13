@@ -8,7 +8,6 @@ use std::cmp;
 use std::io;
 use std::io::prelude::*;
 use std::path::PathBuf;
-use textwrap;
 
 const MIN_TERMINAL_WIDTH: usize = 16;
 
@@ -52,16 +51,16 @@ where
                         .with_position()
                     {
                         match line {
-                            Position::First(line) | Position::Only(line) => write!(
+                            Position::First(line) | Position::Only(line) => writeln!(
                                 terminal,
-                                "{:0>width$} ─┬── {}\n",
+                                "{:0>width$} ─┬── {}",
                                 Style::new().bright().white().apply_to(n + 1),
                                 Style::new().green().apply_to(line),
                                 width = margin,
                             ),
-                            Position::Middle(line) | Position::Last(line) => write!(
+                            Position::Middle(line) | Position::Last(line) => writeln!(
                                 terminal,
-                                "{: >width$}   {}\n",
+                                "{: >width$}   {}",
                                 "│",
                                 Style::new().green().apply_to(line),
                                 width = margin + 3,
@@ -76,16 +75,16 @@ where
                         .with_position()
                     {
                         match line {
-                            Position::First(line) | Position::Only(line) => write!(
+                            Position::First(line) | Position::Only(line) => writeln!(
                                 terminal,
-                                "{: >width$} {}\n",
+                                "{: >width$} {}",
                                 "├──",
                                 Style::new().green().apply_to(line),
                                 width = margin + 3,
                             ),
-                            Position::Middle(line) | Position::Last(line) => write!(
+                            Position::Middle(line) | Position::Last(line) => writeln!(
                                 terminal,
-                                "{: >width$}   {}\n",
+                                "{: >width$}   {}",
                                 "│",
                                 Style::new().green().apply_to(line),
                                 width = margin + 3,
@@ -101,16 +100,16 @@ where
             .with_position()
         {
             match line {
-                Position::First(line) | Position::Only(line) => write!(
+                Position::First(line) | Position::Only(line) => writeln!(
                     terminal,
-                    "{: >width$} {}\n",
+                    "{: >width$} {}",
                     "╰─⯈",
                     Style::new().bold().red().apply_to(line),
                     width = margin + 5,
                 ),
-                Position::Middle(line) | Position::Last(line) => write!(
+                Position::Middle(line) | Position::Last(line) => writeln!(
                     terminal,
-                    "{: >width$}{}\n",
+                    "{: >width$}{}",
                     "",
                     Style::new().bold().red().apply_to(line),
                     width = margin + 6,
