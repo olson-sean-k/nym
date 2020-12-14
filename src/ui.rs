@@ -3,12 +3,20 @@ use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
 use indicatif::{ProgressBar, ProgressBarIter, ProgressDrawTarget, ProgressIterator};
 use itertools::{Itertools as _, Position};
+use lazy_static::lazy_static;
 use std::cmp;
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
 
 const MIN_TERMINAL_WIDTH: usize = 16;
+
+lazy_static! {
+    static ref STYLE_BOX: Style = Style::new().white();
+    static ref STYLE_BRIGHT: Style = Style::new().bright().white();
+    static ref STYLE_GREEN: Style = Style::new().green();
+    static ref STYLE_RED: Style = Style::new().bold().red();
+}
 
 pub trait IteratorExt: Iterator + Sized {
     fn print_actuator_progress(self, terminal: Term) -> ProgressBarIter<Self>
@@ -52,16 +60,17 @@ where
                         match line {
                             Position::First(line) | Position::Only(line) => writeln!(
                                 terminal,
-                                "{:0>width$} ─┬── {}",
-                                Style::new().bright().white().apply_to(n + 1),
-                                Style::new().green().apply_to(line),
+                                "{:0>width$} {} {}",
+                                STYLE_BRIGHT.apply_to(n + 1),
+                                STYLE_BOX.apply_to("─┬──"),
+                                STYLE_GREEN.apply_to(line),
                                 width = margin,
                             ),
                             Position::Middle(line) | Position::Last(line) => writeln!(
                                 terminal,
                                 "{: >width$}   {}",
-                                "│",
-                                Style::new().green().apply_to(line),
+                                STYLE_BOX.apply_to("│"),
+                                STYLE_GREEN.apply_to(line),
                                 width = margin + 3,
                             ),
                         }?;
@@ -77,15 +86,15 @@ where
                             Position::First(line) | Position::Only(line) => writeln!(
                                 terminal,
                                 "{: >width$} {}",
-                                "├──",
-                                Style::new().green().apply_to(line),
+                                STYLE_BOX.apply_to("├──"),
+                                STYLE_GREEN.apply_to(line),
                                 width = margin + 3,
                             ),
                             Position::Middle(line) | Position::Last(line) => writeln!(
                                 terminal,
                                 "{: >width$}   {}",
-                                "│",
-                                Style::new().green().apply_to(line),
+                                STYLE_BOX.apply_to("│"),
+                                STYLE_GREEN.apply_to(line),
                                 width = margin + 3,
                             ),
                         }?;
@@ -102,15 +111,15 @@ where
                 Position::First(line) | Position::Only(line) => writeln!(
                     terminal,
                     "{: >width$} {}",
-                    "╰─⯈",
-                    Style::new().bold().red().apply_to(line),
+                    STYLE_BOX.apply_to("╰─⯈"),
+                    STYLE_RED.apply_to(line),
                     width = margin + 5,
                 ),
                 Position::Middle(line) | Position::Last(line) => writeln!(
                     terminal,
                     "{: >width$}{}",
                     "",
-                    Style::new().bold().red().apply_to(line),
+                    STYLE_RED.apply_to(line),
                     width = margin + 6,
                 ),
             }?;
