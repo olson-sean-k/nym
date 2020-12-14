@@ -1,9 +1,8 @@
-use std::convert::TryFrom;
 use std::io;
+use std::path::Path;
 use walkdir::WalkDir;
 
 use crate::manifest::Manifest;
-use crate::path::CanonicalPath;
 use crate::pattern::{FromPattern, ToPattern};
 
 #[derive(Clone, Debug)]
@@ -13,12 +12,12 @@ pub struct Transform<'t> {
 }
 
 impl<'t> Transform<'t> {
-    pub fn read<M>(&self, directory: &CanonicalPath, depth: usize) -> io::Result<M>
+    pub fn read<M>(&self, directory: impl AsRef<Path>, depth: usize) -> io::Result<M>
     where
         M: Manifest,
     {
         let mut manifest = M::default();
-        for entry in WalkDir::new(directory)
+        for entry in WalkDir::new(directory.as_ref())
             .follow_links(false)
             .min_depth(1)
             .max_depth(depth)
@@ -30,11 +29,10 @@ impl<'t> Transform<'t> {
                     .file_name()
                     .and_then(|name| self.from.find(name.to_str().unwrap()))
                 {
-                    let source = CanonicalPath::try_from(entry.path())?;
+                    let source = entry.path();
                     let mut destination = source.to_path_buf();
                     destination.pop();
                     destination.push(self.to.resolve(&find).unwrap()); // TODO: Do not `unwrap`.
-                    let destination = CanonicalPath::try_from(destination)?;
                     manifest.insert(source, destination)?;
                 }
             }

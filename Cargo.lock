@@ -213,15 +213,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "normpath"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01f55d1a21e95222466b88a22a2d20e3d75effe221d8ed20ffdec03f0cf6f95e"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "number_prefix"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -240,9 +231,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "nom",
- "normpath",
  "regex",
- "smallvec",
  "structopt",
  "textwrap 0.13.0",
  "thiserror",
@@ -385,12 +374,6 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
-
-[[package]]
-name = "smallvec"
-version = "1.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae524f056d7d770e174287294f562e95044c68e88dec909a00d2094805db9d75"
 
 [[package]]
 name = "smawk"
