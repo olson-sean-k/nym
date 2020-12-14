@@ -1,21 +1,41 @@
 use bimap::BiMap;
+use smallvec::{smallvec, SmallVec};
 use std::io::{self, Error, ErrorKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub trait Manifest: Default {
-    type SourceGroup: Clone + IntoIterator<Item = PathBuf>;
+#[derive(Default)]
+pub struct Manifest<M>
+where
+    M: Routing,
+{
+    routing: M,
+}
 
-    fn insert(
+impl<M> Manifest<M>
+where
+    M: Routing,
+{
+    pub fn insert(
         &mut self,
         source: impl Into<PathBuf>,
         destination: impl Into<PathBuf>,
-    ) -> io::Result<()>;
+    ) -> io::Result<()> {
+        self.routing.insert(source.into(), destination.into())
+    }
 
-    // TODO: This is a compromise. Without GATs and `impl Trait`, it is very
-    //       difficult to expose iterators over references for reads. Instead,
-    //       manifests must be convertible into a common type that supports
-    //       many-to-one relationships between paths.
-    fn into_grouped_paths(self) -> Vec<(Self::SourceGroup, PathBuf)>;
+    pub fn paths(&self) -> impl '_ + ExactSizeIterator<Item = (SmallVec<[&'_ Path; 1]>, &'_ Path)> {
+        self.routing.paths()
+    }
+
+    pub fn count(&self) -> usize {
+        self.paths().len()
+    }
+}
+
+pub trait Routing: Default {
+    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> io::Result<()>;
+
+    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SmallVec<[&'_ Path; 1]>, &'_ Path)>>;
 }
 
 #[derive(Clone, Debug, Default)]
@@ -23,23 +43,18 @@ pub struct Bijective {
     inner: BiMap<PathBuf, PathBuf>,
 }
 
-impl Manifest for Bijective {
-    type SourceGroup = Option<PathBuf>;
-
-    fn insert(
-        &mut self,
-        source: impl Into<PathBuf>,
-        destination: impl Into<PathBuf>,
-    ) -> io::Result<()> {
+impl Routing for Bijective {
+    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> io::Result<()> {
         self.inner
-            .insert_no_overwrite(source.into(), destination.into())
-            .map_err(|_| Error::new(ErrorKind::Other, "bijective collision"))
+            .insert_no_overwrite(source, destination)
+            .map_err(|_| Error::new(ErrorKind::Other, "collision"))
     }
 
-    fn into_grouped_paths(self) -> Vec<(Self::SourceGroup, PathBuf)> {
-        self.inner
-            .into_iter()
-            .map(|(source, terminal)| (Some(source), terminal))
-            .collect()
+    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SmallVec<[&'_ Path; 1]>, &'_ Path)>> {
+        Box::new(
+            self.inner
+                .iter()
+                .map(|(source, destination)| (smallvec![source.as_ref()], destination.as_ref())),
+        )
     }
 }

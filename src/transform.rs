@@ -2,7 +2,7 @@ use std::io;
 use std::path::Path;
 use walkdir::WalkDir;
 
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, Routing};
 use crate::pattern::{FromPattern, ToPattern};
 
 #[derive(Clone, Debug)]
@@ -12,11 +12,11 @@ pub struct Transform<'t> {
 }
 
 impl<'t> Transform<'t> {
-    pub fn read<M>(&self, directory: impl AsRef<Path>, depth: usize) -> io::Result<M>
+    pub fn read<M>(&self, directory: impl AsRef<Path>, depth: usize) -> io::Result<Manifest<M>>
     where
-        M: Manifest,
+        M: Routing,
     {
-        let mut manifest = M::default();
+        let mut manifest = Manifest::default();
         for entry in WalkDir::new(directory.as_ref())
             .follow_links(false)
             .min_depth(1)

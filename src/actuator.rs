@@ -2,12 +2,29 @@ use std::fs;
 use std::io::{self, Error, ErrorKind};
 use std::path::Path;
 
-use crate::manifest::{Bijective, Manifest};
+use crate::manifest::{Bijective, Routing};
 
-pub trait Actuator {
-    type Manifest: Manifest;
+#[derive(Default)]
+pub struct Actuator {
+    pub parents: bool,
+    pub overwrite: bool,
+}
 
-    const NAME: &'static str;
+impl Actuator {
+    pub fn write<A, I, P>(&self, sources: I, destination: P) -> io::Result<()>
+    where
+        A: Operation,
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        // TODO: Examine paths to abort overwrites and create directories when
+        //       appropriate.
+        A::write(sources, destination)
+    }
+}
+
+pub trait Operation {
+    type Routing: Routing;
 
     fn write<P>(
         sources: impl IntoIterator<Item = P>,
@@ -19,10 +36,8 @@ pub trait Actuator {
 
 pub enum Copy {}
 
-impl Actuator for Copy {
-    type Manifest = Bijective;
-
-    const NAME: &'static str = "copy";
+impl Operation for Copy {
+    type Routing = Bijective;
 
     fn write<P>(
         sources: impl IntoIterator<Item = P>,
@@ -41,10 +56,8 @@ impl Actuator for Copy {
 
 pub enum Move {}
 
-impl Actuator for Move {
-    type Manifest = Bijective;
-
-    const NAME: &'static str = "move";
+impl Operation for Move {
+    type Routing = Bijective;
 
     fn write<P>(
         sources: impl IntoIterator<Item = P>,

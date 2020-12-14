@@ -232,6 +232,7 @@ dependencies = [
  "lazy_static",
  "nom",
  "regex",
+ "smallvec",
  "structopt",
  "textwrap 0.13.0",
  "thiserror",
@@ -374,6 +375,12 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "smallvec"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae524f056d7d770e174287294f562e95044c68e88dec909a00d2094805db9d75"
 
 [[package]]
 name = "smawk"
