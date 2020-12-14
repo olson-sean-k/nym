@@ -3,13 +3,14 @@ mod ui;
 use anyhow::Error;
 use console::Term;
 use fool::or;
-use normpath::PathExt as _;
 use regex::Regex;
+use std::convert::TryFrom;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 use nym::actuator::{Actuator, Copy, Environment, Move};
 use nym::manifest::Manifest;
+use nym::path::CanonicalPath;
 use nym::pattern::ToPattern;
 use nym::transform::Transform;
 
@@ -49,7 +50,7 @@ struct UnparsedTransform {
 }
 
 struct Executor {
-    directory: PathBuf,
+    directory: CanonicalPath,
     depth: usize,
     force: bool,
 }
@@ -70,7 +71,7 @@ impl Executor {
                 format!("Ready to {} into {} files. Continue?", A::NAME, paths.len()),
             )?,
         ) {
-            let environment = Environment::with_root(self.directory.to_path_buf())?;
+            let environment = Environment::with_root(self.directory.clone())?;
             for (sources, destination) in
                 paths.into_iter().print_actuator_progress(terminal.clone())
             {
@@ -84,7 +85,7 @@ impl Executor {
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
     let executor = Executor {
-        directory: options.directory.normalize()?.into_path_buf(),
+        directory: CanonicalPath::try_from(options.directory)?,
         depth: if options.recursive { usize::MAX } else { 1 },
         force: options.force,
     };

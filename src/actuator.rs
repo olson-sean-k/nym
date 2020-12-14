@@ -1,31 +1,28 @@
 use fool::BoolExt as _;
-use normpath::PathExt as _;
 use smallvec::SmallVec;
+use std::borrow::Borrow;
 use std::fs;
 use std::io::{self, Error, ErrorKind};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::manifest::{Bijective, Manifest};
+use crate::path::CanonicalPath;
 
 // DANGER: Use at your own risk! Writing to the file system may cause
 //         unrecoverable data loss!
 
 #[derive(Default)]
 pub struct Environment {
-    root: Option<PathBuf>,
+    root: Option<CanonicalPath>,
 }
 
 impl Environment {
-    pub fn with_root(root: impl Into<Option<PathBuf>>) -> io::Result<Self> {
+    pub fn with_root(root: impl Into<Option<CanonicalPath>>) -> io::Result<Self> {
         match root.into() {
-            Some(root) => {
-                let root = root.normalize()?;
-                root.has_root()
-                    .then_ext(|| Environment {
-                        root: Some(root.into_path_buf()),
-                    })
-                    .ok_or_else(|| Error::new(ErrorKind::Other, "non-root path"))
-            }
+            Some(root) => root
+                .has_root()
+                .then_ext(|| Environment { root: Some(root) })
+                .ok_or_else(|| Error::new(ErrorKind::Other, "non-root path")),
             _ => Ok(Environment { root: None }),
         }
     }
@@ -36,25 +33,23 @@ impl Environment {
     where
         A: Actuator,
         I: IntoIterator,
-        I::Item: AsRef<Path>,
-        O: AsRef<Path>,
+        I::Item: AsRef<Path> + Borrow<CanonicalPath>,
+        O: AsRef<Path> + Borrow<CanonicalPath>,
     {
         // TODO: Refactor this so that this check can be performed before
         //       attempting to actuate.
-        // TODO: Provide types for canonicalized paths so code like this need
-        //       not defensively massage paths.
         if let Some(root) = self.root.as_ref() {
             let sources = sources
                 .into_iter()
                 .map(|path| {
-                    path.as_ref()
+                    path.borrow()
                         .starts_with(root)
                         .then_ext(|| path)
                         .ok_or_else(|| Error::new(ErrorKind::Other, "path not in root"))
                 })
                 .collect::<Result<SmallVec<[_; 1]>, _>>()?;
             let destination = destination
-                .as_ref()
+                .borrow()
                 .starts_with(root)
                 .then_ext(|| destination)
                 .ok_or_else(|| Error::new(ErrorKind::Other, "path not in root"))?;
@@ -96,7 +91,7 @@ impl Actuator for Copy {
         let source = sources
             .into_iter()
             .next()
-            .ok_or_else(|| Error::new(ErrorKind::Other, ""))?;
+            .ok_or_else(|| Error::new(ErrorKind::Other, "no source paths"))?;
         fs::copy(source, destination).map(|_| ())
     }
 }
@@ -118,7 +113,7 @@ impl Actuator for Move {
         let source = sources
             .into_iter()
             .next()
-            .ok_or_else(|| Error::new(ErrorKind::Other, ""))?;
+            .ok_or_else(|| Error::new(ErrorKind::Other, "no source paths"))?;
         fs::rename(source, destination).map(|_| ())
     }
 }

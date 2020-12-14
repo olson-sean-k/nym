@@ -7,7 +7,7 @@ use std::borrow::Borrow;
 use std::cmp;
 use std::io;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::Path;
 
 const MIN_TERMINAL_WIDTH: usize = 16;
 
@@ -35,7 +35,7 @@ pub fn confirmation(terminal: &Term, prompt: impl AsRef<str>) -> io::Result<bool
 
 pub fn print_grouped_paths<P, I>(terminal: &mut Term, paths: &Vec<(I, P)>) -> io::Result<()>
 where
-    P: Borrow<PathBuf>,
+    P: AsRef<Path>,
     I: Clone + IntoIterator<Item = P>,
 {
     let margin = ((paths.len() as f64).log10() as usize) + 1;
@@ -45,7 +45,7 @@ where
         for source in sources.clone().into_iter().with_position() {
             match source {
                 Position::First(source) | Position::Only(source) => {
-                    let source = source.borrow().to_string_lossy();
+                    let source = source.as_ref().to_string_lossy();
                     for line in textwrap::wrap(source.as_ref(), width)
                         .into_iter()
                         .with_position()
@@ -69,7 +69,7 @@ where
                     }
                 }
                 Position::Middle(source) | Position::Last(source) => {
-                    let source = source.borrow().to_string_lossy();
+                    let source = source.as_ref().to_string_lossy();
                     for line in textwrap::wrap(source.as_ref(), width)
                         .into_iter()
                         .with_position()
@@ -94,7 +94,7 @@ where
                 }
             }
         }
-        let destination = destination.borrow().to_string_lossy();
+        let destination = destination.as_ref().to_string_lossy();
         for line in textwrap::wrap(destination.as_ref(), width)
             .into_iter()
             .with_position()
