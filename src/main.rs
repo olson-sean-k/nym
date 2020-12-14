@@ -3,6 +3,7 @@ mod ui;
 use anyhow::Error;
 use console::Term;
 use fool::or;
+use normpath::PathExt as _;
 use regex::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -83,7 +84,7 @@ impl Executor {
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
     let executor = Executor {
-        directory: options.directory,
+        directory: options.directory.normalize()?.into_path_buf(),
         depth: if options.recursive { usize::MAX } else { 1 },
         force: options.force,
     };

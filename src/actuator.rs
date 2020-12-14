@@ -41,6 +41,8 @@ impl Environment {
     {
         // TODO: Refactor this so that this check can be performed before
         //       attempting to actuate.
+        // TODO: Provide types for canonicalized paths so code like this need
+        //       not defensively massage paths.
         if let Some(root) = self.root.as_ref() {
             let sources = sources
                 .into_iter()

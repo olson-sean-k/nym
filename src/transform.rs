@@ -1,6 +1,6 @@
 use normpath::PathExt as _;
-use std::io;
-use std::path::Path;
+use std::io::{self, Error, ErrorKind};
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::manifest::Manifest;
@@ -33,7 +33,14 @@ impl<'t> Transform<'t> {
                     let source = entry.path();
                     let mut destination = source.to_path_buf();
                     destination.pop();
-                    destination.push(self.to.resolve(&find).unwrap()); // TODO:
+                    destination.push(self.to.resolve(&find).unwrap()); // TODO: Do not `unwrap`.
+                    let destination = if let Some(parent) = destination.parent() {
+                        let parent = parent.normalize()?.into_path_buf();
+                        parent.join(destination.file_name().unwrap())
+                    }
+                    else {
+                        destination
+                    };
                     manifest.insert(source, destination)?;
                 }
             }
