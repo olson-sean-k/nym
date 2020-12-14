@@ -1,7 +1,5 @@
-use normpath::PathExt as _;
 use std::convert::TryFrom;
-use std::io::{self, Error, ErrorKind};
-use std::path::{Path, PathBuf};
+use std::io;
 use walkdir::WalkDir;
 
 use crate::manifest::Manifest;

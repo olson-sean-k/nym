@@ -1,7 +1,5 @@
 use bimap::BiMap;
-use std::convert::TryInto;
 use std::io::{self, Error, ErrorKind};
-use std::path::PathBuf;
 
 use crate::path::CanonicalPath;
 

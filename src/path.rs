@@ -2,7 +2,26 @@ use normpath::PathExt as _;
 use std::convert::TryFrom;
 use std::io;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+
+pub trait PathExt {
+    #[inline(always)]
+    fn is_verbatim(&self) -> bool {
+        false
+    }
+}
+
+impl PathExt for Path {
+    #[cfg(target_os = "windows")]
+    fn is_verbatim(&self) -> bool {
+        if let Some(Component::Prefix(prefix)) = self.components().next() {
+            prefix.kind().is_verbatim()
+        }
+        else {
+            false
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialOrd, PartialEq)]
 pub struct CanonicalPath {

@@ -1,7 +1,9 @@
 use nom::error::ErrorKind;
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::path::PathExt as _;
 use crate::pattern::from::{Find, Selector};
 use crate::pattern::PatternError;
 
@@ -113,6 +115,22 @@ impl<'a> ToPattern<'a> {
             }
         }
         Ok(output)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[inline(always)]
+    pub fn is_verbatim(&self) -> bool {
+        false
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn is_verbatim(&self) -> bool {
+        let mut path = PathBuf::new();
+        let mut components = self.components.iter();
+        while let Some(Component::Literal(literal)) = components.next() {
+            path.push(literal.as_ref());
+        }
+        path.is_verbatim()
     }
 }
 

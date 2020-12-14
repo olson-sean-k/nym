@@ -3,7 +3,6 @@ use dialoguer::theme::ColorfulTheme;
 use dialoguer::Confirm;
 use indicatif::{ProgressBar, ProgressBarIter, ProgressDrawTarget, ProgressIterator};
 use itertools::{Itertools as _, Position};
-use std::borrow::Borrow;
 use std::cmp;
 use std::io;
 use std::io::prelude::*;
@@ -33,7 +32,7 @@ pub fn confirmation(terminal: &Term, prompt: impl AsRef<str>) -> io::Result<bool
         .interact_on(terminal)
 }
 
-pub fn print_grouped_paths<P, I>(terminal: &mut Term, paths: &Vec<(I, P)>) -> io::Result<()>
+pub fn print_grouped_paths<P, I>(terminal: &mut Term, paths: &[(I, P)]) -> io::Result<()>
 where
     P: AsRef<Path>,
     I: Clone + IntoIterator<Item = P>,
