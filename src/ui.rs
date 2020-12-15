@@ -6,7 +6,6 @@ use itertools::{Itertools as _, Position};
 use lazy_static::lazy_static;
 use std::cmp;
 use std::io;
-use std::io::prelude::*;
 
 use nym::actuator::{Copy, Move};
 use nym::manifest::{Manifest, Routing};
@@ -46,14 +45,14 @@ impl Label for Move {
 }
 
 pub trait Print {
-    fn print(&self, terminal: &mut Term) -> io::Result<()>;
+    fn print(&self, terminal: &Term) -> io::Result<()>;
 }
 
 impl<M> Print for Manifest<M>
 where
     M: Routing,
 {
-    fn print(&self, terminal: &mut Term) -> io::Result<()> {
+    fn print(&self, terminal: &Term) -> io::Result<()> {
         let paths = self.paths();
         let margin = ((paths.len() as f64).log10() as usize) + 1;
         let width = terminal.size().1 as usize;
@@ -68,21 +67,21 @@ where
                             .with_position()
                         {
                             match line {
-                                Position::First(line) | Position::Only(line) => writeln!(
-                                    terminal,
-                                    "{:0>width$} {} {}",
-                                    STYLE_BRIGHT.apply_to(n + 1),
-                                    STYLE_BOX.apply_to("─┬──"),
-                                    STYLE_GREEN.apply_to(line),
-                                    width = margin,
-                                ),
-                                Position::Middle(line) | Position::Last(line) => writeln!(
-                                    terminal,
-                                    "{: >width$}   {}",
-                                    STYLE_BOX.apply_to("│"),
-                                    STYLE_GREEN.apply_to(line),
-                                    width = margin + 3,
-                                ),
+                                Position::First(line) | Position::Only(line) => terminal
+                                    .write_line(&format!(
+                                        "{:0>width$} {} {}",
+                                        STYLE_BRIGHT.apply_to(n + 1),
+                                        STYLE_BOX.apply_to("─┬──"),
+                                        STYLE_GREEN.apply_to(line),
+                                        width = margin,
+                                    )),
+                                Position::Middle(line) | Position::Last(line) => terminal
+                                    .write_line(&format!(
+                                        "{: >width$}   {}",
+                                        STYLE_BOX.apply_to("│"),
+                                        STYLE_GREEN.apply_to(line),
+                                        width = margin + 3,
+                                    )),
                             }?;
                         }
                     }
@@ -93,20 +92,20 @@ where
                             .with_position()
                         {
                             match line {
-                                Position::First(line) | Position::Only(line) => writeln!(
-                                    terminal,
-                                    "{: >width$} {}",
-                                    STYLE_BOX.apply_to("├──"),
-                                    STYLE_GREEN.apply_to(line),
-                                    width = margin + 3,
-                                ),
-                                Position::Middle(line) | Position::Last(line) => writeln!(
-                                    terminal,
-                                    "{: >width$}   {}",
-                                    STYLE_BOX.apply_to("│"),
-                                    STYLE_GREEN.apply_to(line),
-                                    width = margin + 3,
-                                ),
+                                Position::First(line) | Position::Only(line) => terminal
+                                    .write_line(&format!(
+                                        "{: >width$} {}",
+                                        STYLE_BOX.apply_to("├──"),
+                                        STYLE_GREEN.apply_to(line),
+                                        width = margin + 3,
+                                    )),
+                                Position::Middle(line) | Position::Last(line) => terminal
+                                    .write_line(&format!(
+                                        "{: >width$}   {}",
+                                        STYLE_BOX.apply_to("│"),
+                                        STYLE_GREEN.apply_to(line),
+                                        width = margin + 3,
+                                    )),
                             }?;
                         }
                     }
@@ -118,20 +117,18 @@ where
                 .with_position()
             {
                 match line {
-                    Position::First(line) | Position::Only(line) => writeln!(
-                        terminal,
+                    Position::First(line) | Position::Only(line) => terminal.write_line(&format!(
                         "{: >width$} {}",
                         STYLE_BOX.apply_to("╰─⯈"),
                         STYLE_RED.apply_to(line),
                         width = margin + 5,
-                    ),
-                    Position::Middle(line) | Position::Last(line) => writeln!(
-                        terminal,
+                    )),
+                    Position::Middle(line) | Position::Last(line) => terminal.write_line(&format!(
                         "{: >width$}{}",
                         "",
                         STYLE_RED.apply_to(line),
                         width = margin + 6,
-                    ),
+                    )),
                 }?;
             }
         }

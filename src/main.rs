@@ -74,10 +74,10 @@ impl Harness {
     where
         A: Label + Operation,
     {
-        let mut terminal = Term::stderr();
+        let terminal = Term::stderr();
         let manifest: Manifest<A::Routing> = transform.read(&self.directory, self.depth)?;
         if !self.quiet {
-            manifest.print(&mut terminal)?;
+            manifest.print(&terminal)?;
         }
         let actuate = self.force
             || ui::confirmation(
