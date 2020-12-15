@@ -30,6 +30,8 @@ pub trait Operation {
         P: AsRef<Path>;
 }
 
+pub enum Append {}
+
 pub enum Copy {}
 
 impl Operation for Copy {
@@ -46,6 +48,8 @@ impl Operation for Copy {
         fs::copy(source, route.destination()).map(|_| ())
     }
 }
+
+pub enum Link {}
 
 pub enum Move {}
 

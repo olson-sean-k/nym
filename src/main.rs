@@ -17,7 +17,7 @@ const DISCLAIMER: &'static str = "Only paths are examined to detect collisions. 
                                   may cause overwriting, truncation, and data loss. Review \
                                   patterns and paths carefully.";
 
-/// Append, copy, and move files using patterns.
+/// Append, copy, link, and move files using patterns.
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 struct Options {
@@ -59,6 +59,11 @@ enum Command {
     },
     /// Copies matched files.
     Copy {
+        #[structopt(flatten)]
+        transform: UnparsedTransform,
+    },
+    /// Symbolically links matched files.
+    Link {
         #[structopt(flatten)]
         transform: UnparsedTransform,
     },
@@ -112,7 +117,7 @@ impl Harness {
             manifest.print(&terminal)?;
             ui::print_warning(&terminal, DISCLAIMER)?;
         }
-        let actuate = self.force
+        if self.force
             || ui::confirmation(
                 &terminal,
                 format!(
@@ -120,8 +125,8 @@ impl Harness {
                     A::LABEL,
                     manifest.count()
                 ),
-            )?;
-        if actuate {
+            )?
+        {
             for route in manifest.routes().print_progress(terminal) {
                 self.actuator.write::<A, _>(route)?;
             }
@@ -148,6 +153,7 @@ fn main() -> Result<(), Error> {
             let transform = transform.parse(options.glob)?;
             harness.execute::<Copy>(&transform)?;
         }
+        Command::Link { .. } => todo!(),
         Command::Move { transform, .. } => {
             let transform = transform.parse(options.glob)?;
             harness.execute::<Move>(&transform)?;
