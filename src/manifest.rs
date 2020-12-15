@@ -1,7 +1,32 @@
 use bimap::BiMap;
 use smallvec::{smallvec, SmallVec};
 use std::io::{self, Error, ErrorKind};
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+
+type SourceGroup<P> = SmallVec<[P; 1]>;
+
+pub struct Route<M, P>
+where
+    P: AsRef<Path>,
+{
+    sources: SourceGroup<P>,
+    destination: P,
+    phantom: PhantomData<M>,
+}
+
+impl<M, P> Route<M, P>
+where
+    P: AsRef<Path>,
+{
+    pub fn sources(&self) -> impl ExactSizeIterator<Item = &'_ P> {
+        self.sources.iter()
+    }
+
+    pub fn destination(&self) -> &P {
+        &self.destination
+    }
+}
 
 #[derive(Default)]
 pub struct Manifest<M>
@@ -23,19 +48,23 @@ where
         self.routing.insert(source.into(), destination.into())
     }
 
-    pub fn paths(&self) -> impl '_ + ExactSizeIterator<Item = (SmallVec<[&'_ Path; 1]>, &'_ Path)> {
-        self.routing.paths()
+    pub fn routes(&self) -> impl ExactSizeIterator<Item = Route<M, &'_ Path>> {
+        self.routing.paths().map(|(sources, destination)| Route {
+            sources,
+            destination,
+            phantom: PhantomData,
+        })
     }
 
     pub fn count(&self) -> usize {
-        self.paths().len()
+        self.routes().len()
     }
 }
 
 pub trait Routing: Default {
     fn insert(&mut self, source: PathBuf, destination: PathBuf) -> io::Result<()>;
 
-    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SmallVec<[&'_ Path; 1]>, &'_ Path)>>;
+    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SourceGroup<&'_ Path>, &'_ Path)>>;
 }
 
 #[derive(Clone, Debug, Default)]
@@ -50,7 +79,7 @@ impl Routing for Bijective {
             .map_err(|_| Error::new(ErrorKind::Other, "collision"))
     }
 
-    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SmallVec<[&'_ Path; 1]>, &'_ Path)>> {
+    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SourceGroup<&'_ Path>, &'_ Path)>> {
         Box::new(
             self.inner
                 .iter()

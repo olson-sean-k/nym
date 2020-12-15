@@ -89,8 +89,8 @@ impl Harness {
                 ),
             )?;
         if actuate {
-            for (sources, destination) in manifest.paths().print_progress(terminal) {
-                self.actuator.write::<A, _, _>(sources, destination)?;
+            for route in manifest.routes().print_progress(terminal) {
+                self.actuator.write::<A, _>(route)?;
             }
         }
         Ok(())

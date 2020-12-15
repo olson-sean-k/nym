@@ -53,12 +53,12 @@ where
     M: Routing,
 {
     fn print(&self, terminal: &Term) -> io::Result<()> {
-        let paths = self.paths();
-        let margin = ((paths.len() as f64).log10() as usize) + 1;
+        let routes = self.routes();
+        let margin = ((routes.len() as f64).log10() as usize) + 1;
         let width = terminal.size().1 as usize;
         let width = cmp::max(width - cmp::min(width, margin + 6), MIN_TERMINAL_WIDTH);
-        for (n, (sources, destination)) in paths.enumerate() {
-            for source in sources.clone().into_iter().with_position() {
+        for (n, route) in routes.enumerate() {
+            for source in route.sources().with_position() {
                 match source {
                     Position::First(source) | Position::Only(source) => {
                         let source = source.to_string_lossy();
@@ -111,7 +111,7 @@ where
                     }
                 }
             }
-            let destination = destination.to_string_lossy();
+            let destination = route.destination().to_string_lossy();
             for line in textwrap::wrap(destination.as_ref(), width)
                 .into_iter()
                 .with_position()
