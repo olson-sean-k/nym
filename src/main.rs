@@ -13,32 +13,52 @@ use nym::transform::Transform;
 
 use crate::ui::{IteratorExt as _, Label, Print};
 
+/// Append, copy, and move files using patterns.
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 struct Options {
     #[structopt(subcommand)]
     command: Command,
-    #[structopt(long = "", short = "-C", default_value = ".")]
+    /// Use path globs for from-patterns.
+    #[structopt(long = "glob", short = "G", conflicts_with = "regex")]
+    glob: bool,
+    /// Use regular expressions for from-patterns.
+    #[structopt(long = "regex", short = "X")]
+    regex: bool,
+    /// The working directory.
+    #[structopt(long = "tree", short = "C", default_value = ".")]
     directory: PathBuf,
-    #[structopt(long = "--force", short = "-f")]
+    /// Perform operations without interactive prompts and ignoring warnings.
+    #[structopt(long = "force", short = "f")]
     force: bool,
-    #[structopt(long = "--overwrite", short = "-w")]
+    /// Overwrite existing files matched by to-patterns.
+    #[structopt(long = "overwrite", short = "w")]
     overwrite: bool,
-    #[structopt(long = "--parents", short = "-p")]
+    /// Create parent directories for paths matched by to-patterns.
+    #[structopt(long = "parents", short = "p")]
     parents: bool,
-    #[structopt(long = "--quiet", short = "-q")]
+    /// Do not print additional information nor warnings.
+    #[structopt(long = "quiet", short = "q")]
     quiet: bool,
-    #[structopt(long = "--recursive", short = "-R")]
+    /// Apply from-patterns recursively in the working directory tree.
+    #[structopt(long = "recursive", short = "R")]
     recursive: bool,
 }
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 enum Command {
+    /// Appends matched files.
+    Append {
+        #[structopt(flatten)]
+        transform: UnparsedTransform,
+    },
+    /// Copies matched files.
     Copy {
         #[structopt(flatten)]
         transform: UnparsedTransform,
     },
+    /// Moves matched files.
     Move {
         #[structopt(flatten)]
         transform: UnparsedTransform,
@@ -48,16 +68,20 @@ enum Command {
 impl AsRef<UnparsedTransform> for Command {
     fn as_ref(&self) -> &UnparsedTransform {
         match *self {
+            Command::Append { ref transform, .. } => transform,
             Command::Copy { ref transform, .. } => transform,
             Command::Move { ref transform, .. } => transform,
         }
     }
 }
 
+/// Transformation.
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 struct UnparsedTransform {
-    from: Regex,
+    /// The from-pattern used to match source files.
+    from: String,
+    /// The to-pattern used to resolve destination files.
     to: String,
 }
 
@@ -111,10 +135,16 @@ fn main() -> Result<(), Error> {
     };
     // TODO: Parse `Transform`s with `structopt`.
     match options.command {
+        Command::Append { .. } => todo!(),
         Command::Copy { transform, .. } => {
             let to = ToPattern::parse(&transform.to)?;
             let transform = Transform {
-                from: transform.from.into(),
+                from: if options.glob {
+                    todo!()
+                }
+                else {
+                    Regex::new(&transform.from)?.into()
+                },
                 to,
             };
             harness.execute::<Copy>(&transform)?;
@@ -122,7 +152,12 @@ fn main() -> Result<(), Error> {
         Command::Move { transform, .. } => {
             let to = ToPattern::parse(&transform.to)?;
             let transform = Transform {
-                from: transform.from.into(),
+                from: if options.glob {
+                    todo!()
+                }
+                else {
+                    Regex::new(&transform.from)?.into()
+                },
                 to,
             };
             harness.execute::<Move>(&transform)?;
