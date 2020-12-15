@@ -13,6 +13,10 @@ use nym::transform::Transform;
 
 use crate::ui::{IteratorExt as _, Label, Print};
 
+const DISCLAIMER: &'static str = "Only paths are examined to detect collisions. False positives \
+                                  may cause overwriting, truncation, and data loss. Review \
+                                  patterns and paths carefully.";
+
 /// Append, copy, and move files using patterns.
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
@@ -102,7 +106,7 @@ impl Harness {
         let manifest: Manifest<A::Routing> = transform.read(&self.directory, self.depth)?;
         if !self.quiet {
             manifest.print(&terminal)?;
-            ui::print_disclaimer(&terminal)?;
+            ui::print_warning(&terminal, DISCLAIMER)?;
         }
         let actuate = self.force
             || ui::confirmation(

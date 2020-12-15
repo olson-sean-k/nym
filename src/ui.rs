@@ -13,12 +13,12 @@ use nym::manifest::{Manifest, Routing};
 const MIN_TERMINAL_WIDTH: usize = 16;
 
 lazy_static! {
-    static ref STYLE_BOX: Style = Style::new().bold();
-    static ref STYLE_BOLD_RED: Style = Style::new().bold().red();
-    static ref STYLE_BOLD_YELLOW: Style = Style::new().bold().yellow();
-    static ref STYLE_BRIGHT_WHITE: Style = Style::new().bright().white();
-    static ref STYLE_GREEN: Style = Style::new().green();
-    static ref STYLE_YELLOW: Style = Style::new().yellow();
+    static ref STYLE_ARROW: Style = Style::new();
+    static ref STYLE_INDEX: Style = Style::new().bright().white();
+    static ref STYLE_SOURCE_PATH: Style = Style::new().green();
+    static ref STYLE_DESTINATION_PATH: Style = Style::new().red();
+    static ref STYLE_WARNING: Style = Style::new().bold();
+    static ref STYLE_WARNING_HEADER: Style = Style::new().blink().bold().yellow();
 }
 
 pub trait IteratorExt: Iterator + Sized {
@@ -71,16 +71,16 @@ where
                                 Position::First(line) | Position::Only(line) => terminal
                                     .write_line(&format!(
                                         "{:0>width$} {} {}",
-                                        STYLE_BRIGHT_WHITE.apply_to(n + 1),
-                                        STYLE_BOX.apply_to("─┬──"),
-                                        STYLE_GREEN.apply_to(line),
+                                        STYLE_INDEX.apply_to(n + 1),
+                                        STYLE_ARROW.apply_to("─┬──"),
+                                        STYLE_SOURCE_PATH.apply_to(line),
                                         width = margin,
                                     )),
                                 Position::Middle(line) | Position::Last(line) => terminal
                                     .write_line(&format!(
                                         "{: >width$}   {}",
-                                        STYLE_BOX.apply_to("│"),
-                                        STYLE_GREEN.apply_to(line),
+                                        STYLE_ARROW.apply_to("│"),
+                                        STYLE_SOURCE_PATH.apply_to(line),
                                         width = margin + 3,
                                     )),
                             }?;
@@ -96,15 +96,15 @@ where
                                 Position::First(line) | Position::Only(line) => terminal
                                     .write_line(&format!(
                                         "{: >width$} {}",
-                                        STYLE_BOX.apply_to("├──"),
-                                        STYLE_GREEN.apply_to(line),
+                                        STYLE_ARROW.apply_to("├──"),
+                                        STYLE_SOURCE_PATH.apply_to(line),
                                         width = margin + 3,
                                     )),
                                 Position::Middle(line) | Position::Last(line) => terminal
                                     .write_line(&format!(
                                         "{: >width$}   {}",
-                                        STYLE_BOX.apply_to("│"),
-                                        STYLE_GREEN.apply_to(line),
+                                        STYLE_ARROW.apply_to("│"),
+                                        STYLE_SOURCE_PATH.apply_to(line),
                                         width = margin + 3,
                                     )),
                             }?;
@@ -120,14 +120,14 @@ where
                 match line {
                     Position::First(line) | Position::Only(line) => terminal.write_line(&format!(
                         "{: >width$} {}",
-                        STYLE_BOX.apply_to("╰─⯈"),
-                        STYLE_BOLD_RED.apply_to(line),
+                        STYLE_ARROW.apply_to("╰─⯈"),
+                        STYLE_DESTINATION_PATH.apply_to(line),
                         width = margin + 5,
                     )),
                     Position::Middle(line) | Position::Last(line) => terminal.write_line(&format!(
                         "{: >width$}{}",
                         "",
-                        STYLE_BOLD_RED.apply_to(line),
+                        STYLE_DESTINATION_PATH.apply_to(line),
                         width = margin + 6,
                     )),
                 }?;
@@ -137,29 +137,25 @@ where
     }
 }
 
-pub fn print_disclaimer(terminal: &Term) -> io::Result<()> {
-    const DISCLAIMER: &'static str = "Only paths are examined to detect collisions. False \
-                                      positives occur easily and may cause overwriting, \
-                                      truncation, and data loss. Review patterns and paths \
-                                      carefully.";
-    const HEADER: &'static str = "WARNING:";
-    let margin = HEADER.len() + 1;
+pub fn print_warning(terminal: &Term, warning: impl AsRef<str>) -> io::Result<()> {
+    const HEADER: &'static str = "warning";
+    let margin = HEADER.len() + 2;
     let width = width(terminal, margin);
-    for line in textwrap::wrap(DISCLAIMER, width)
+    for line in textwrap::wrap(warning.as_ref(), width)
         .into_iter()
         .with_position()
     {
         match line {
             Position::First(line) | Position::Only(line) => terminal.write_line(&format!(
-                "{: <width$}{}",
-                STYLE_BOLD_YELLOW.apply_to(HEADER),
-                STYLE_YELLOW.apply_to(line),
-                width = margin,
+                "{}{} {}",
+                STYLE_WARNING_HEADER.apply_to(HEADER),
+                STYLE_WARNING.apply_to(":"),
+                STYLE_WARNING.apply_to(line),
             )),
             Position::Middle(line) | Position::Last(line) => terminal.write_line(&format!(
                 "{: <width$}{}",
                 "",
-                STYLE_YELLOW.apply_to(line),
+                STYLE_WARNING.apply_to(line),
                 width = margin,
             )),
         }?;
