@@ -102,6 +102,7 @@ impl Harness {
         let manifest: Manifest<A::Routing> = transform.read(&self.directory, self.depth)?;
         if !self.quiet {
             manifest.print(&terminal)?;
+            ui::print_disclaimer(&terminal)?;
         }
         let actuate = self.force
             || ui::confirmation(

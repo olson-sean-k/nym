@@ -13,10 +13,12 @@ use nym::manifest::{Manifest, Routing};
 const MIN_TERMINAL_WIDTH: usize = 16;
 
 lazy_static! {
-    static ref STYLE_BOX: Style = Style::new().white();
-    static ref STYLE_BRIGHT: Style = Style::new().bright().white();
+    static ref STYLE_BOX: Style = Style::new().bold();
+    static ref STYLE_BOLD_RED: Style = Style::new().bold().red();
+    static ref STYLE_BOLD_YELLOW: Style = Style::new().bold().yellow();
+    static ref STYLE_BRIGHT_WHITE: Style = Style::new().bright().white();
     static ref STYLE_GREEN: Style = Style::new().green();
-    static ref STYLE_RED: Style = Style::new().bold().red();
+    static ref STYLE_YELLOW: Style = Style::new().yellow();
 }
 
 pub trait IteratorExt: Iterator + Sized {
@@ -55,8 +57,7 @@ where
     fn print(&self, terminal: &Term) -> io::Result<()> {
         let routes = self.routes();
         let margin = ((routes.len() as f64).log10() as usize) + 1;
-        let width = terminal.size().1 as usize;
-        let width = cmp::max(width - cmp::min(width, margin + 6), MIN_TERMINAL_WIDTH);
+        let width = width(terminal, margin + 6);
         for (n, route) in routes.enumerate() {
             for source in route.sources().with_position() {
                 match source {
@@ -70,7 +71,7 @@ where
                                 Position::First(line) | Position::Only(line) => terminal
                                     .write_line(&format!(
                                         "{:0>width$} {} {}",
-                                        STYLE_BRIGHT.apply_to(n + 1),
+                                        STYLE_BRIGHT_WHITE.apply_to(n + 1),
                                         STYLE_BOX.apply_to("─┬──"),
                                         STYLE_GREEN.apply_to(line),
                                         width = margin,
@@ -120,13 +121,13 @@ where
                     Position::First(line) | Position::Only(line) => terminal.write_line(&format!(
                         "{: >width$} {}",
                         STYLE_BOX.apply_to("╰─⯈"),
-                        STYLE_RED.apply_to(line),
+                        STYLE_BOLD_RED.apply_to(line),
                         width = margin + 5,
                     )),
                     Position::Middle(line) | Position::Last(line) => terminal.write_line(&format!(
                         "{: >width$}{}",
                         "",
-                        STYLE_RED.apply_to(line),
+                        STYLE_BOLD_RED.apply_to(line),
                         width = margin + 6,
                     )),
                 }?;
@@ -136,6 +137,36 @@ where
     }
 }
 
+pub fn print_disclaimer(terminal: &Term) -> io::Result<()> {
+    const DISCLAIMER: &'static str = "Only paths are examined to detect collisions. False \
+                                      positives occur easily and may cause overwriting, \
+                                      truncation, and data loss. Review patterns and paths \
+                                      carefully.";
+    const HEADER: &'static str = "WARNING:";
+    let margin = HEADER.len() + 1;
+    let width = width(terminal, margin);
+    for line in textwrap::wrap(DISCLAIMER, width)
+        .into_iter()
+        .with_position()
+    {
+        match line {
+            Position::First(line) | Position::Only(line) => terminal.write_line(&format!(
+                "{: <width$}{}",
+                STYLE_BOLD_YELLOW.apply_to(HEADER),
+                STYLE_YELLOW.apply_to(line),
+                width = margin,
+            )),
+            Position::Middle(line) | Position::Last(line) => terminal.write_line(&format!(
+                "{: <width$}{}",
+                "",
+                STYLE_YELLOW.apply_to(line),
+                width = margin,
+            )),
+        }?;
+    }
+    Ok(())
+}
+
 pub fn confirmation(terminal: &Term, prompt: impl AsRef<str>) -> io::Result<bool> {
     Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(prompt.as_ref())
@@ -143,4 +174,9 @@ pub fn confirmation(terminal: &Term, prompt: impl AsRef<str>) -> io::Result<bool
         .show_default(true)
         .wait_for_newline(true)
         .interact_on(terminal)
+}
+
+fn width(terminal: &Term, margin: usize) -> usize {
+    let width = terminal.size().1 as usize;
+    cmp::max(width - cmp::min(width, margin), MIN_TERMINAL_WIDTH)
 }
