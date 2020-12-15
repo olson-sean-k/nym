@@ -69,16 +69,6 @@ enum Command {
     },
 }
 
-impl AsRef<UnparsedTransform> for Command {
-    fn as_ref(&self) -> &UnparsedTransform {
-        match *self {
-            Command::Append { ref transform, .. } => transform,
-            Command::Copy { ref transform, .. } => transform,
-            Command::Move { ref transform, .. } => transform,
-        }
-    }
-}
-
 /// Transformation.
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
@@ -87,6 +77,20 @@ struct UnparsedTransform {
     from: String,
     /// The to-pattern used to resolve destination files.
     to: String,
+}
+
+impl UnparsedTransform {
+    fn parse(&self, glob: bool) -> Result<Transform<'_>, Error> {
+        Ok(Transform {
+            from: if glob {
+                todo!()
+            }
+            else {
+                Regex::new(&self.from)?.into()
+            },
+            to: ToPattern::parse(&self.to)?,
+        })
+    }
 }
 
 struct Harness {
@@ -138,33 +142,14 @@ fn main() -> Result<(), Error> {
         force: options.force,
         quiet: options.quiet,
     };
-    // TODO: Parse `Transform`s with `structopt`.
     match options.command {
         Command::Append { .. } => todo!(),
         Command::Copy { transform, .. } => {
-            let to = ToPattern::parse(&transform.to)?;
-            let transform = Transform {
-                from: if options.glob {
-                    todo!()
-                }
-                else {
-                    Regex::new(&transform.from)?.into()
-                },
-                to,
-            };
+            let transform = transform.parse(options.glob)?;
             harness.execute::<Copy>(&transform)?;
         }
         Command::Move { transform, .. } => {
-            let to = ToPattern::parse(&transform.to)?;
-            let transform = Transform {
-                from: if options.glob {
-                    todo!()
-                }
-                else {
-                    Regex::new(&transform.from)?.into()
-                },
-                to,
-            };
+            let transform = transform.parse(options.glob)?;
             harness.execute::<Move>(&transform)?;
         }
     }
