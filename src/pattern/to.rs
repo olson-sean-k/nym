@@ -161,29 +161,26 @@ impl<'a> ToPattern<'a> {
         where
             E: ParseError<&'i str>,
         {
-            let index = |text: &'i str| {
-                usize::from_str_radix(text, 10)
-                    .map(|index| Component::from(Capture::from(index)))
-                    .ok()
-            };
-            let name = |text: &'i str| Some(Component::from(Capture::from(text)));
             sequence::delimited(
                 character::char('{'),
                 branch::alt((
                     // TODO: Support empty braces. Note that using `space0`
                     //       conflicts with the alternate parsers.
                     combinator::value(Component::from(Capture::from(0)), character::space1),
-                    combinator::map_opt(
+                    combinator::map_res(
                         sequence::preceded(character::char('#'), character::digit1),
-                        index,
+                        |text: &'i str| {
+                            usize::from_str_radix(text, 10)
+                                .map(|index| Component::from(Capture::from(index)))
+                        },
                     ),
-                    combinator::map_opt(
+                    combinator::map(
                         sequence::preceded(
                             character::char('@'),
                             // TODO: `regex` supports additional name characters.
                             character::alphanumeric1,
                         ),
-                        name,
+                        |text: &'i str| Component::from(Capture::from(text)),
                     ),
                 )),
                 character::char('}'),
