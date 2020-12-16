@@ -201,7 +201,7 @@ impl<'a> ToPattern<'a> {
                 sequence::preceded(
                     character::char('!'),
                     branch::alt((
-                        combinator::map(bytes::tag_no_case("b3"), |_| {
+                        combinator::map(bytes::tag_no_case("b3sum"), |_| {
                             Component::Property(Property::B3Sum)
                         }),
                         combinator::map(bytes::tag_no_case("ts"), |_| {
