@@ -46,7 +46,7 @@ impl From<String> for Capture<'static> {
 
 #[derive(Clone, Debug)]
 enum Property {
-    Hash,
+    B3Sum,
     Timestamp,
 }
 
@@ -126,7 +126,7 @@ impl<'a> ToPattern<'a> {
                     output.push_str(text);
                 }
                 Component::Property(ref property) => match *property {
-                    Property::Hash => {
+                    Property::B3Sum => {
                         let hash = blake3::hash(fs::read(source.as_ref())?.as_ref());
                         output.push_str(hash.to_hex().as_str());
                     }
@@ -199,10 +199,10 @@ impl<'a> ToPattern<'a> {
                 sequence::preceded(
                     character::char('!'),
                     branch::alt((
-                        combinator::map(bytes::tag_no_case("hash"), |_| {
-                            Component::Property(Property::Hash)
+                        combinator::map(bytes::tag_no_case("b3"), |_| {
+                            Component::Property(Property::B3Sum)
                         }),
-                        combinator::map(bytes::tag_no_case("timestamp"), |_| {
+                        combinator::map(bytes::tag_no_case("ts"), |_| {
                             Component::Property(Property::Timestamp)
                         }),
                     )),
