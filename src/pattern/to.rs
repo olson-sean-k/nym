@@ -1,5 +1,8 @@
+use filetime::FileTime;
 use nom::error::ErrorKind;
 use std::borrow::Cow;
+use std::fs;
+use std::path::Path;
 use std::str::FromStr;
 
 use crate::pattern::from::{Find, Selector};
@@ -42,9 +45,16 @@ impl From<String> for Capture<'static> {
 }
 
 #[derive(Clone, Debug)]
+enum Property {
+    Hash,
+    Timestamp,
+}
+
+#[derive(Clone, Debug)]
 enum Component<'a> {
-    Capture(Capture<'a>), // TODO:
+    Capture(Capture<'a>),
     Literal(Cow<'a, str>),
+    Property(Property),
 }
 
 impl<'a> Component<'a> {
@@ -52,6 +62,7 @@ impl<'a> Component<'a> {
         match self {
             Component::Capture(capture) => capture.into_owned().into(),
             Component::Literal(literal) => literal.into_owned().into(),
+            Component::Property(property) => Component::Property(property),
         }
     }
 }
@@ -89,7 +100,11 @@ impl<'a> ToPattern<'a> {
         ToPattern { components }
     }
 
-    pub fn resolve(&self, find: &Find<'_>) -> Result<String, PatternError> {
+    pub fn resolve(
+        &self,
+        source: impl AsRef<Path>,
+        find: &Find<'_>,
+    ) -> Result<String, PatternError> {
         let mut output = String::new();
         for component in &self.components {
             match *component {
@@ -110,6 +125,17 @@ impl<'a> ToPattern<'a> {
                 Component::Literal(ref text) => {
                     output.push_str(text);
                 }
+                Component::Property(ref property) => match *property {
+                    Property::Hash => {
+                        let hash = blake3::hash(fs::read(source.as_ref())?.as_ref());
+                        output.push_str(hash.to_hex().as_str());
+                    }
+                    Property::Timestamp => {
+                        let metadata = fs::metadata(source.as_ref())?;
+                        let time = FileTime::from_last_modification_time(&metadata);
+                        output.push_str(&format!("{}", time));
+                    }
+                },
             }
         }
         Ok(output)
@@ -164,12 +190,33 @@ impl<'a> ToPattern<'a> {
             )(input)
         }
 
+        fn property<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
+        where
+            E: ParseError<&'i str>,
+        {
+            sequence::delimited(
+                character::char('{'),
+                sequence::preceded(
+                    character::char('!'),
+                    branch::alt((
+                        combinator::map(bytes::tag_no_case("hash"), |_| {
+                            Component::Property(Property::Hash)
+                        }),
+                        combinator::map(bytes::tag_no_case("timestamp"), |_| {
+                            Component::Property(Property::Timestamp)
+                        }),
+                    )),
+                ),
+                character::char('}'),
+            )(input)
+        }
+
         fn pattern<'i, E>(input: &'i str) -> IResult<&'i str, ToPattern, E>
         where
             E: ParseError<&'i str>,
         {
             combinator::all_consuming(combinator::map(
-                multi::many1(branch::alt((literal, capture))),
+                multi::many1(branch::alt((literal, capture, property))),
                 move |components| ToPattern { components },
             ))(input)
         }

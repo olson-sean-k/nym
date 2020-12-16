@@ -32,7 +32,7 @@ impl<'t> Transform<'t> {
                     let source = entry.path();
                     let mut destination = source.to_path_buf();
                     destination.pop();
-                    destination.push(self.to.resolve(&find).unwrap()); // TODO: Do not `unwrap`.
+                    destination.push(self.to.resolve(source, &find).unwrap()); // TODO: Do not `unwrap`.
                     manifest.insert(source, destination)?;
                 }
             }
