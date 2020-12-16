@@ -13,9 +13,9 @@ use nym::transform::Transform;
 
 use crate::ui::{IteratorExt as _, Label, Print};
 
-const DISCLAIMER: &'static str = "Only paths are examined to detect collisions. False positives \
-                                  may cause overwriting, truncation, and data loss. Review \
-                                  patterns and paths carefully.";
+const DISCLAIMER: &str = "Only paths are examined to detect collisions. False positives may cause \
+                          overwriting, truncation, and data loss. Review patterns and paths \
+                          carefully.";
 
 /// Append, copy, link, and move files using patterns.
 #[derive(Debug, StructOpt)]
