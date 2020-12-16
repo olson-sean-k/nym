@@ -127,11 +127,16 @@ impl<'a> ToPattern<'a> {
                 }
                 Component::Property(ref property) => match *property {
                     Property::B3Sum => {
-                        let hash = blake3::hash(fs::read(source.as_ref())?.as_ref());
+                        let hash = blake3::hash(
+                            fs::read(source.as_ref())
+                                .map_err(|error| PatternError::PropertyRead(error))?
+                                .as_ref(),
+                        );
                         output.push_str(hash.to_hex().as_str());
                     }
                     Property::Timestamp => {
-                        let metadata = fs::metadata(source.as_ref())?;
+                        let metadata = fs::metadata(source.as_ref())
+                            .map_err(|error| PatternError::PropertyRead(error))?;
                         let time = FileTime::from_last_modification_time(&metadata);
                         output.push_str(&format!("{}", time));
                     }

@@ -1,10 +1,16 @@
 use bimap::BiMap;
 use smallvec::{smallvec, SmallVec};
-use std::io::{self, Error, ErrorKind};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 type SourceGroup<P> = SmallVec<[P; 1]>;
+
+#[derive(Debug, Error)]
+pub enum ManifestError {
+    #[error("detected collision in route destination path: {0}")]
+    PathCollision(PathBuf),
+}
 
 pub struct Route<M, P>
 where
@@ -44,7 +50,7 @@ where
         &mut self,
         source: impl Into<PathBuf>,
         destination: impl Into<PathBuf>,
-    ) -> io::Result<()> {
+    ) -> Result<(), ManifestError> {
         self.routing.insert(source.into(), destination.into())
     }
 
@@ -62,7 +68,7 @@ where
 }
 
 pub trait Routing: Default {
-    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> io::Result<()>;
+    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError>;
 
     fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SourceGroup<&'_ Path>, &'_ Path)>>;
 }
@@ -73,10 +79,13 @@ pub struct Bijective {
 }
 
 impl Routing for Bijective {
-    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> io::Result<()> {
-        self.inner
-            .insert_no_overwrite(source, destination)
-            .map_err(|_| Error::new(ErrorKind::Other, "collision"))
+    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError> {
+        if self.inner.contains_right(&destination) {
+            Err(ManifestError::PathCollision(destination))
+        }
+        else {
+            Ok(self.inner.insert_no_overwrite(source, destination).unwrap())
+        }
     }
 
     fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SourceGroup<&'_ Path>, &'_ Path)>> {

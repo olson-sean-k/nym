@@ -14,14 +14,8 @@ pub enum PatternError {
     CaptureNotFound,
     #[error("failed to parse pattern")]
     Parse,
-    #[error("I/O")]
-    Io(io::Error),
-}
-
-impl From<io::Error> for PatternError {
-    fn from(error: io::Error) -> Self {
-        PatternError::Io(error)
-    }
+    #[error("failed to read property in to-pattern: {0}")]
+    PropertyRead(io::Error),
 }
 
 impl<I> From<nom::Err<(I, ErrorKind)>> for PatternError {
