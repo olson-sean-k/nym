@@ -3,21 +3,22 @@ use std::io::{self, Error, ErrorKind};
 use std::path::Path;
 
 use crate::manifest::{Bijective, Route, Routing};
+use crate::policy::DestinationPolicy;
 
 #[derive(Default)]
-pub struct Actuator {
-    pub parents: bool,
-    pub overwrite: bool,
-}
+pub struct Actuator;
 
 impl Actuator {
-    pub fn write<A, P>(&self, route: Route<A::Routing, P>) -> io::Result<()>
+    pub fn write<A, P>(
+        &self,
+        route: Route<A::Routing, P>,
+        policy: &DestinationPolicy,
+    ) -> io::Result<()>
     where
         A: Operation,
         P: AsRef<Path>,
     {
-        // TODO: Examine paths to abort overwrites and create directories when
-        //       appropriate.
+        policy.write(route.destination())?;
         A::write(route)
     }
 }

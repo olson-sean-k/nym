@@ -4,11 +4,14 @@ use walkdir::WalkDir;
 
 use crate::manifest::{Manifest, ManifestError, Routing};
 use crate::pattern::{FromPattern, PatternError, ToPattern};
+use crate::policy::{DestinationPolicy, PolicyError};
 
 #[derive(Debug, Error)]
 pub enum TransformError {
     #[error("failed to traverse directory tree: {0}")]
     DirectoryTraversal(walkdir::Error),
+    #[error("invalid destination: {0}")]
+    DestinationInvalid(PolicyError),
     #[error("failed to resolve to-pattern: {0}")]
     PatternResolution(PatternError),
     #[error("invalid manifest: {0}")]
@@ -18,6 +21,12 @@ pub enum TransformError {
 impl From<ManifestError> for TransformError {
     fn from(error: ManifestError) -> Self {
         TransformError::ManifestInvalid(error)
+    }
+}
+
+impl From<PolicyError> for TransformError {
+    fn from(error: PolicyError) -> Self {
+        TransformError::DestinationInvalid(error)
     }
 }
 
@@ -32,6 +41,7 @@ impl<'t> Transform<'t> {
         &self,
         directory: impl AsRef<Path>,
         depth: usize,
+        policy: &DestinationPolicy,
     ) -> Result<Manifest<M>, TransformError>
     where
         M: Routing,
@@ -57,6 +67,7 @@ impl<'t> Transform<'t> {
                             .resolve(source, &find)
                             .map_err(|error| TransformError::PatternResolution(error))?,
                     );
+                    policy.read(&destination)?;
                     manifest.insert(source, destination)?;
                 }
             }
