@@ -2,9 +2,9 @@ use std::path::Path;
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use crate::manifest::{Manifest, ManifestError, Routing};
+use crate::manifest::{Manifest, ManifestError, Router};
 use crate::pattern::{FromPattern, PatternError, ToPattern};
-use crate::policy::{DestinationPolicy, PolicyError};
+use crate::policy::{Policy, PolicyError};
 
 #[derive(Debug, Error)]
 pub enum TransformError {
@@ -39,12 +39,12 @@ pub struct Transform<'t> {
 impl<'t> Transform<'t> {
     pub fn read<M>(
         &self,
+        policy: &Policy,
         directory: impl AsRef<Path>,
         depth: usize,
-        policy: &DestinationPolicy,
     ) -> Result<Manifest<M>, TransformError>
     where
-        M: Routing,
+        M: Router,
     {
         let mut manifest = Manifest::default();
         for entry in WalkDir::new(directory.as_ref())

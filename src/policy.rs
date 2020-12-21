@@ -13,12 +13,12 @@ pub enum PolicyError {
     Orphaned(PathBuf),
 }
 
-pub struct DestinationPolicy {
+pub struct Policy {
     pub parents: bool,
     pub overwrite: bool,
 }
 
-impl DestinationPolicy {
+impl Policy {
     pub fn read(&self, destination: impl AsRef<Path>) -> Result<(), PolicyError> {
         let destination = destination.as_ref();
         let parent = destination

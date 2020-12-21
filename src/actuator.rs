@@ -2,18 +2,14 @@ use std::fs;
 use std::io::{self, Error, ErrorKind};
 use std::path::Path;
 
-use crate::manifest::{Bijective, Route, Routing};
-use crate::policy::DestinationPolicy;
+use crate::manifest::{Bijective, Route, Router};
+use crate::policy::Policy;
 
 #[derive(Default)]
 pub struct Actuator;
 
 impl Actuator {
-    pub fn write<A, P>(
-        &self,
-        route: Route<A::Routing, P>,
-        policy: &DestinationPolicy,
-    ) -> io::Result<()>
+    pub fn write<A, P>(&self, policy: &Policy, route: Route<A::Router, P>) -> io::Result<()>
     where
         A: Operation,
         P: AsRef<Path>,
@@ -24,9 +20,9 @@ impl Actuator {
 }
 
 pub trait Operation {
-    type Routing: Routing;
+    type Router: Router;
 
-    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
+    fn write<P>(route: Route<Self::Router, P>) -> io::Result<()>
     where
         P: AsRef<Path>;
 }
@@ -36,9 +32,9 @@ pub enum Append {}
 pub enum Copy {}
 
 impl Operation for Copy {
-    type Routing = Bijective;
+    type Router = Bijective;
 
-    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
+    fn write<P>(route: Route<Self::Router, P>) -> io::Result<()>
     where
         P: AsRef<Path>,
     {
@@ -55,9 +51,9 @@ pub enum Link {}
 pub enum Move {}
 
 impl Operation for Move {
-    type Routing = Bijective;
+    type Router = Bijective;
 
-    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
+    fn write<P>(route: Route<Self::Router, P>) -> io::Result<()>
     where
         P: AsRef<Path>,
     {

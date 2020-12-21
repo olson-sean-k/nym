@@ -9,7 +9,7 @@ use structopt::StructOpt;
 use nym::actuator::{Actuator, Copy, Move, Operation};
 use nym::manifest::Manifest;
 use nym::pattern::ToPattern;
-use nym::policy::DestinationPolicy;
+use nym::policy::Policy;
 use nym::transform::Transform;
 
 use crate::ui::{IteratorExt as _, Label, Print};
@@ -101,7 +101,7 @@ impl UnparsedTransform {
 
 struct Harness {
     actuator: Actuator,
-    policy: DestinationPolicy,
+    policy: Policy,
     directory: PathBuf,
     depth: usize,
     force: bool,
@@ -114,8 +114,8 @@ impl Harness {
         A: Label + Operation,
     {
         let terminal = Term::stderr();
-        let manifest: Manifest<A::Routing> =
-            transform.read(&self.directory, self.depth, &self.policy)?;
+        let manifest: Manifest<A::Router> =
+            transform.read(&self.policy, &self.directory, self.depth)?;
         if !self.quiet {
             manifest.print(&terminal)?;
             ui::print_warning(&terminal, DISCLAIMER)?;
@@ -126,12 +126,12 @@ impl Harness {
                 format!(
                     "Ready to {} into {} files. Continue?",
                     A::LABEL,
-                    manifest.count()
+                    manifest.routes().len(),
                 ),
             )?
         {
             for route in manifest.routes().print_progress(terminal) {
-                self.actuator.write::<A, _>(route, &self.policy)?;
+                self.actuator.write::<A, _>(&self.policy, route)?;
             }
         }
         Ok(())
@@ -141,8 +141,8 @@ impl Harness {
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
     let harness = Harness {
-        actuator: Actuator,
-        policy: DestinationPolicy {
+        actuator: Actuator::default(),
+        policy: Policy {
             parents: options.parents,
             overwrite: options.overwrite,
         },
