@@ -8,7 +8,7 @@ type SourceGroup<P> = SmallVec<[P; 1]>;
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
-    #[error("detected collision in route destination path: {0}")]
+    #[error("detected collision in route destination path: `{0}`")]
     PathCollision(PathBuf),
 }
 

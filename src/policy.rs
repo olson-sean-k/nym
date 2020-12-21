@@ -5,11 +5,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PolicyError {
-    #[error("destination is a directory: {0}")]
+    #[error("destination is a directory: `{0}`")]
     NotAFile(PathBuf),
-    #[error("destination file already exists: {0}")]
+    #[error("destination file already exists: `{0}`")]
     AlreadyExists(PathBuf),
-    #[error("destination parent directory does not exist: {0}")]
+    #[error("destination parent directory does not exist: `{0}`")]
     Orphaned(PathBuf),
 }
 
