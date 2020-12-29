@@ -15,7 +15,9 @@ pub enum PatternError {
     #[error("failed to parse pattern")]
     Parse,
     #[error("failed to read property in to-pattern: {0}")]
-    PropertyRead(io::Error),
+    ReadProperty(io::Error),
+    #[error("failed to read directory tree: {0}")]
+    ReadTree(walkdir::Error),
 }
 
 impl<I> From<nom::Err<(I, ErrorKind)>> for PatternError {
