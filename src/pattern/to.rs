@@ -2,6 +2,7 @@ use filetime::FileTime;
 use nom::error::ErrorKind;
 use std::borrow::Cow;
 use std::fs;
+use std::num::ParseIntError;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -51,53 +52,130 @@ enum Property {
 }
 
 #[derive(Clone, Debug)]
-enum Component<'a> {
+enum Token<'a> {
     Capture(Capture<'a>),
     Literal(Cow<'a, str>),
     Property(Property),
 }
 
-impl<'a> Component<'a> {
-    pub fn into_owned(self) -> Component<'static> {
+impl<'a> Token<'a> {
+    pub fn into_owned(self) -> Token<'static> {
         match self {
-            Component::Capture(capture) => capture.into_owned().into(),
-            Component::Literal(literal) => literal.into_owned().into(),
-            Component::Property(property) => Component::Property(property),
+            Token::Capture(capture) => capture.into_owned().into(),
+            Token::Literal(literal) => literal.into_owned().into(),
+            Token::Property(property) => Token::Property(property),
         }
     }
 }
 
-impl<'a> From<Capture<'a>> for Component<'a> {
+impl<'a> From<Capture<'a>> for Token<'a> {
     fn from(capture: Capture<'a>) -> Self {
-        Component::Capture(capture)
+        Token::Capture(capture)
     }
 }
 
-impl<'a> From<&'a str> for Component<'a> {
+impl<'a> From<&'a str> for Token<'a> {
     fn from(literal: &'a str) -> Self {
-        Component::Literal(Cow::Borrowed(literal))
+        Token::Literal(Cow::Borrowed(literal))
     }
 }
 
-impl From<String> for Component<'static> {
+impl From<String> for Token<'static> {
     fn from(literal: String) -> Self {
-        Component::Literal(Cow::Owned(literal))
+        Token::Literal(Cow::Owned(literal))
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct ToPattern<'a> {
-    components: Vec<Component<'a>>,
+    tokens: Vec<Token<'a>>,
 }
 
 impl<'a> ToPattern<'a> {
+    pub fn parse(text: &'a str) -> Result<Self, PatternError> {
+        use nom::bytes::complete as bytes;
+        use nom::character::complete as character;
+        use nom::error::{FromExternalError, ParseError};
+        use nom::{branch, combinator, multi, sequence, IResult};
+
+        // TODO: Support escaping captures.
+        fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
+        where
+            E: ParseError<&'i str>,
+        {
+            combinator::map(bytes::is_not("{"), From::from)(input)
+        }
+
+        fn capture<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
+        where
+            E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
+        {
+            sequence::delimited(
+                character::char('{'),
+                branch::alt((
+                    // TODO: Support empty braces. Note that using `space0`
+                    //       conflicts with the alternate parsers.
+                    combinator::value(Token::from(Capture::from(0)), character::space1),
+                    combinator::map_res(
+                        sequence::preceded(character::char('#'), character::digit1),
+                        |text: &'i str| {
+                            usize::from_str_radix(text, 10)
+                                .map(|index| Token::from(Capture::from(index)))
+                        },
+                    ),
+                    combinator::map(
+                        sequence::preceded(
+                            character::char('@'),
+                            // TODO: `regex` supports additional name characters.
+                            character::alphanumeric1,
+                        ),
+                        |text: &'i str| Token::from(Capture::from(text)),
+                    ),
+                )),
+                character::char('}'),
+            )(input)
+        }
+
+        fn property<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
+        where
+            E: ParseError<&'i str>,
+        {
+            sequence::delimited(
+                character::char('{'),
+                sequence::preceded(
+                    character::char('!'),
+                    branch::alt((
+                        combinator::map(bytes::tag_no_case("b3sum"), |_| {
+                            Token::Property(Property::B3Sum)
+                        }),
+                        combinator::map(bytes::tag_no_case("ts"), |_| {
+                            Token::Property(Property::Timestamp)
+                        }),
+                    )),
+                ),
+                character::char('}'),
+            )(input)
+        }
+
+        fn pattern<'i, E>(input: &'i str) -> IResult<&'i str, ToPattern, E>
+        where
+            E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
+        {
+            combinator::all_consuming(combinator::map(
+                multi::many1(branch::alt((literal, capture, property))),
+                move |tokens| ToPattern { tokens },
+            ))(input)
+        }
+
+        pattern::<(_, ErrorKind)>(text)
+            .map(|(_, pattern)| pattern)
+            .map_err(Into::into)
+    }
+
     pub fn into_owned(self) -> ToPattern<'static> {
-        let ToPattern { components } = self;
-        let components = components
-            .into_iter()
-            .map(|component| component.into_owned())
-            .collect();
-        ToPattern { components }
+        let ToPattern { tokens } = self;
+        let tokens = tokens.into_iter().map(|token| token.into_owned()).collect();
+        ToPattern { tokens }
     }
 
     pub fn resolve(
@@ -106,9 +184,9 @@ impl<'a> ToPattern<'a> {
         find: &Find<'_>,
     ) -> Result<String, PatternError> {
         let mut output = String::new();
-        for component in &self.components {
-            match *component {
-                Component::Capture(ref capture) => match capture {
+        for token in &self.tokens {
+            match *token {
+                Token::Capture(ref capture) => match capture {
                     Capture::Index(ref index) => {
                         output.push_str(
                             find.capture(ByIndex(*index))
@@ -122,10 +200,10 @@ impl<'a> ToPattern<'a> {
                         );
                     }
                 },
-                Component::Literal(ref text) => {
+                Token::Literal(ref text) => {
                     output.push_str(text);
                 }
-                Component::Property(ref property) => match *property {
+                Token::Property(ref property) => match *property {
                     Property::B3Sum => {
                         let hash = blake3::hash(
                             fs::read(source.as_ref())
@@ -144,88 +222,6 @@ impl<'a> ToPattern<'a> {
             }
         }
         Ok(output)
-    }
-}
-
-impl<'a> ToPattern<'a> {
-    pub fn parse(text: &'a str) -> Result<Self, PatternError> {
-        use nom::bytes::complete as bytes;
-        use nom::character::complete as character;
-        use nom::error::ParseError;
-        use nom::{branch, combinator, multi, sequence, IResult};
-
-        // TODO: Support escaping captures.
-        fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            combinator::map(bytes::is_not("{"), From::from)(input)
-        }
-
-        fn capture<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            sequence::delimited(
-                character::char('{'),
-                branch::alt((
-                    // TODO: Support empty braces. Note that using `space0`
-                    //       conflicts with the alternate parsers.
-                    combinator::value(Component::from(Capture::from(0)), character::space1),
-                    combinator::map_res(
-                        sequence::preceded(character::char('#'), character::digit1),
-                        |text: &'i str| {
-                            usize::from_str_radix(text, 10)
-                                .map(|index| Component::from(Capture::from(index)))
-                        },
-                    ),
-                    combinator::map(
-                        sequence::preceded(
-                            character::char('@'),
-                            // TODO: `regex` supports additional name characters.
-                            character::alphanumeric1,
-                        ),
-                        |text: &'i str| Component::from(Capture::from(text)),
-                    ),
-                )),
-                character::char('}'),
-            )(input)
-        }
-
-        fn property<'i, E>(input: &'i str) -> IResult<&'i str, Component, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            sequence::delimited(
-                character::char('{'),
-                sequence::preceded(
-                    character::char('!'),
-                    branch::alt((
-                        combinator::map(bytes::tag_no_case("b3sum"), |_| {
-                            Component::Property(Property::B3Sum)
-                        }),
-                        combinator::map(bytes::tag_no_case("ts"), |_| {
-                            Component::Property(Property::Timestamp)
-                        }),
-                    )),
-                ),
-                character::char('}'),
-            )(input)
-        }
-
-        fn pattern<'i, E>(input: &'i str) -> IResult<&'i str, ToPattern, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            combinator::all_consuming(combinator::map(
-                multi::many1(branch::alt((literal, capture, property))),
-                move |components| ToPattern { components },
-            ))(input)
-        }
-
-        pattern::<(_, ErrorKind)>(text)
-            .map(|(_, pattern)| pattern)
-            .map_err(Into::into)
     }
 }
 

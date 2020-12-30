@@ -44,7 +44,7 @@ impl<'t> From<Captures<'t>> for Find<'t> {
 
 #[derive(Clone, Debug)]
 enum InnerPattern {
-    Glob(Glob),
+    Glob(Glob<'static>),
     Regex(Regex),
 }
 
@@ -108,8 +108,8 @@ impl FromPattern {
     }
 }
 
-impl From<Glob> for FromPattern {
-    fn from(glob: Glob) -> FromPattern {
+impl From<Glob<'static>> for FromPattern {
+    fn from(glob: Glob<'static>) -> FromPattern {
         FromPattern {
             inner: InnerPattern::Glob(glob),
         }
