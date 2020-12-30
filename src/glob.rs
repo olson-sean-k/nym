@@ -9,6 +9,8 @@ use thiserror::Error;
 
 use crate::PositionExt as _;
 
+pub use regex::bytes::Captures;
+
 #[derive(Debug, Error)]
 pub enum GlobError {
     #[error("failed to parse glob")]
@@ -29,7 +31,7 @@ pub struct BytePath<'a> {
 impl<'a> BytePath<'a> {
     pub fn new<P>(path: &'a P) -> Self
     where
-        P: AsRef<Path>,
+        P: AsRef<Path> + ?Sized,
     {
         #[cfg(unix)]
         fn normalize(mut path: Cow<[u8]>) -> Cow<[u8]> {
@@ -136,9 +138,9 @@ impl<'a> Glob<'a> {
                 }
                 (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
                 (_, Token::Wildcard(Wildcard::Many)) => push("([^/]*)"),
-                (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(/?|.*/)"),
-                (Position::Middle(()), Token::Wildcard(Wildcard::Tree)) => push("(/|/.*/)"),
-                (Position::Last(()), Token::Wildcard(Wildcard::Tree)) => push("(/?|/.*)"),
+                (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*)/)"),
+                (Position::Middle(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*)/)"),
+                (Position::Last(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|/(.*))"),
                 (Position::Only(()), Token::Wildcard(Wildcard::Tree)) => push("(.*)"),
             }
         }
@@ -224,6 +226,15 @@ impl<'a> Glob<'a> {
         let tokens = tokens.into_iter().map(|token| token.into_owned()).collect();
         Glob { tokens, regex }
     }
+
+    pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
+        let path = BytePath::new(path.as_ref());
+        self.regex.is_match(&path.path)
+    }
+
+    pub fn captures<'p>(&self, path: &'p BytePath<'_>) -> Option<Captures<'p>> {
+        self.regex.captures(&path.path)
+    }
 }
 
 impl FromStr for Glob<'static> {
@@ -236,7 +247,10 @@ impl FromStr for Glob<'static> {
 
 #[cfg(test)]
 mod tests {
-    use crate::glob::Glob;
+    use std::path::Path;
+
+    use crate::glob::{BytePath, Glob};
+    use bstr::ByteSlice;
 
     #[test]
     fn parse_glob_with_any_tokens() {
@@ -302,5 +316,26 @@ mod tests {
         assert!(Glob::parse("?**?").is_err());
         assert!(Glob::parse("?*?**").is_err());
         assert!(Glob::parse("**/**?/**").is_err());
+    }
+
+    #[test]
+    fn match_glob_with_tree_tokens() {
+        let glob = Glob::parse("a/**/b").unwrap();
+
+        assert!(glob.is_match(Path::new("a/b")));
+        assert!(glob.is_match(Path::new("a/x/b")));
+        assert!(glob.is_match(Path::new("a/x/y/z/b")));
+
+        assert!(!glob.is_match(Path::new("a")));
+        assert!(!glob.is_match(Path::new("b/a")));
+
+        assert_eq!(
+            b"x/y/z",
+            glob.captures(&BytePath::new(Path::new("a/x/y/z/b")))
+                .unwrap()
+                .get(1)
+                .unwrap()
+                .as_bytes()
+        );
     }
 }
