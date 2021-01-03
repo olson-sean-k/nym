@@ -4,9 +4,9 @@ use std::borrow::Cow;
 use std::fs;
 use std::num::ParseIntError;
 use std::path::Path;
-use std::str::FromStr;
+use std::str::{self, FromStr};
 
-use crate::pattern::from::{Find, Selector};
+use crate::pattern::from::{Matches, Selector};
 use crate::pattern::PatternError;
 
 use Selector::ByIndex;
@@ -181,23 +181,28 @@ impl<'a> ToPattern<'a> {
     pub fn resolve(
         &self,
         source: impl AsRef<Path>,
-        find: &Find<'_>,
+        matches: &Matches<'_>,
     ) -> Result<String, PatternError> {
+        let encode = |bytes| -> Result<_, PatternError> {
+            str::from_utf8(bytes).map_err(|error| PatternError::Encoding(error))
+        };
         let mut output = String::new();
         for token in &self.tokens {
             match *token {
                 Token::Capture(ref capture) => match capture {
                     Capture::Index(ref index) => {
-                        output.push_str(
-                            find.capture(ByIndex(*index))
+                        output.push_str(encode(
+                            matches
+                                .capture(ByIndex(*index))
                                 .ok_or(PatternError::CaptureNotFound)?,
-                        );
+                        )?);
                     }
                     Capture::Name(ref name) => {
-                        output.push_str(
-                            find.capture(ByName(name))
+                        output.push_str(encode(
+                            matches
+                                .capture(ByName(name))
                                 .ok_or(PatternError::CaptureNotFound)?,
-                        );
+                        )?);
                     }
                 },
                 Token::Literal(ref text) => {

@@ -3,9 +3,10 @@ mod to;
 
 use nom::error::ErrorKind;
 use std::io;
+use std::str::Utf8Error;
 use thiserror::Error;
 
-pub use crate::pattern::from::{Find, FromPattern};
+pub use crate::pattern::from::{FromPattern, Matches};
 pub use crate::pattern::to::ToPattern;
 
 #[derive(Debug, Error)]
@@ -14,10 +15,10 @@ pub enum PatternError {
     CaptureNotFound,
     #[error("failed to parse pattern")]
     Parse,
+    #[error("failed to encode capture in to-pattern: {0}")]
+    Encoding(Utf8Error),
     #[error("failed to read property in to-pattern: {0}")]
     ReadProperty(io::Error),
-    #[error("failed to read directory tree: {0}")]
-    ReadTree(walkdir::Error),
 }
 
 impl<I> From<nom::Err<(I, ErrorKind)>> for PatternError {

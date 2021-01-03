@@ -2,6 +2,7 @@ use std::path::Path;
 use thiserror::Error;
 use walkdir::WalkDir;
 
+use crate::glob::BytePath;
 use crate::manifest::{Manifest, ManifestError, Router};
 use crate::pattern::{FromPattern, PatternError, ToPattern};
 use crate::policy::{Policy, PolicyError};
@@ -30,13 +31,29 @@ impl From<PolicyError> for TransformError {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Transform<'t> {
-    pub from: FromPattern,
-    pub to: ToPattern<'t>,
+#[derive(Clone, Copy, Debug)]
+pub enum MatchStrategy {
+    File,
+    Path,
 }
 
-impl<'t> Transform<'t> {
+impl MatchStrategy {
+    fn subpath<'p>(&self, path: &'p Path) -> Option<BytePath<'p>> {
+        match *self {
+            MatchStrategy::File => path.file_name().map(|name| BytePath::from_os_str(name)),
+            MatchStrategy::Path => Some(BytePath::from_path(path)),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Transform<'f, 't> {
+    pub from: FromPattern<'f>,
+    pub to: ToPattern<'t>,
+    pub strategy: MatchStrategy,
+}
+
+impl<'t, 'f> Transform<'t, 'f> {
     pub fn read<M>(
         &self,
         policy: &Policy,
@@ -46,6 +63,10 @@ impl<'t> Transform<'t> {
     where
         M: Router,
     {
+        // TODO: `FromPattern` should control iteration. Revisit emitting an
+        //       iterator from `FromPattern` instead. Importantly, globs may or
+        //       may not require traversing subdirectories, while regular
+        //       expressions cannot specify traversals intrinsically.
         let mut manifest = Manifest::default();
         for entry in WalkDir::new(directory.as_ref())
             .follow_links(false)
@@ -54,17 +75,17 @@ impl<'t> Transform<'t> {
         {
             let entry = entry.map_err(|error| TransformError::DirectoryTraversal(error))?;
             if entry.file_type().is_file() {
-                if let Some(find) = entry
-                    .path()
-                    .file_name()
-                    .and_then(|name| self.from.find(name.to_str().unwrap()))
-                {
+                let subpath = self
+                    .strategy
+                    .subpath(entry.path().strip_prefix(directory.as_ref()).unwrap())
+                    .unwrap();
+                if let Some(matches) = self.from.matches(&subpath) {
                     let source = entry.path();
                     let mut destination = source.to_path_buf();
                     destination.pop();
                     destination.push(
                         self.to
-                            .resolve(source, &find)
+                            .resolve(source, &matches)
                             .map_err(|error| TransformError::PatternResolution(error))?,
                     );
                     policy.read(&destination)?;

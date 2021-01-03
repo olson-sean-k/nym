@@ -10,6 +10,7 @@ use thiserror::Error;
 use crate::PositionExt as _;
 
 pub use regex::bytes::Captures;
+use std::ffi::OsStr;
 
 #[derive(Debug, Error)]
 pub enum GlobError {
@@ -29,10 +30,7 @@ pub struct BytePath<'a> {
 }
 
 impl<'a> BytePath<'a> {
-    pub fn new<P>(path: &'a P) -> Self
-    where
-        P: AsRef<Path> + ?Sized,
-    {
+    fn from_bytes(bytes: Cow<'a, [u8]>) -> Self {
         #[cfg(unix)]
         fn normalize(mut path: Cow<[u8]>) -> Cow<[u8]> {
             path
@@ -51,8 +49,25 @@ impl<'a> BytePath<'a> {
             path
         }
 
-        let path = normalize(Vec::from_path_lossy(path.as_ref()));
+        let path = normalize(bytes);
         BytePath { path }
+    }
+
+    pub fn from_os_str(text: &'a OsStr) -> Self {
+        Self::from_bytes(Vec::from_os_str_lossy(text))
+    }
+
+    pub fn from_path<P>(path: &'a P) -> Self
+    where
+        P: AsRef<Path> + ?Sized,
+    {
+        Self::from_bytes(Vec::from_path_lossy(path.as_ref()))
+    }
+}
+
+impl<'a> AsRef<[u8]> for BytePath<'a> {
+    fn as_ref(&self) -> &[u8] {
+        self.path.as_ref()
     }
 }
 
@@ -228,12 +243,12 @@ impl<'a> Glob<'a> {
     }
 
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
-        let path = BytePath::new(path.as_ref());
+        let path = BytePath::from_path(path.as_ref());
         self.regex.is_match(&path.path)
     }
 
     pub fn captures<'p>(&self, path: &'p BytePath<'_>) -> Option<Captures<'p>> {
-        self.regex.captures(&path.path)
+        self.regex.captures(path.as_ref())
     }
 }
 
@@ -331,7 +346,7 @@ mod tests {
 
         assert_eq!(
             b"x/y/z",
-            glob.captures(&BytePath::new(Path::new("a/x/y/z/b")))
+            glob.captures(&BytePath::from_path(Path::new("a/x/y/z/b")))
                 .unwrap()
                 .get(1)
                 .unwrap()

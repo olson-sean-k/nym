@@ -1,9 +1,6 @@
-use regex::{Captures, Regex};
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
+use regex::bytes::{Captures, Regex};
 
-use crate::glob::Glob;
-use crate::pattern::{PatternError, ToPattern};
+use crate::glob::{BytePath, Glob};
 
 pub enum Selector<'t> {
     ByIndex(usize),
@@ -11,115 +8,62 @@ pub enum Selector<'t> {
 }
 
 #[derive(Debug)]
-enum InnerFind<'t> {
-    Glob,
-    Regex(Captures<'t>),
+pub struct Matches<'a> {
+    captures: Captures<'a>,
 }
 
-#[derive(Debug)]
-pub struct Find<'t> {
-    inner: InnerFind<'t>,
-}
+impl<'a> Matches<'a> {
+    pub fn get(&self) -> &'a [u8] {
+        self.capture(Selector::ByIndex(0)).unwrap()
+    }
 
-impl<'t> Find<'t> {
-    pub fn capture(&self, selector: Selector<'_>) -> Option<&'t str> {
-        match self.inner {
-            InnerFind::Regex(ref captures) => match selector {
-                Selector::ByIndex(index) => captures.get(index),
-                Selector::ByName(name) => captures.name(name),
-            }
-            .map(|capture| capture.as_str()),
-            _ => todo!(),
+    pub fn capture(&self, selector: Selector<'_>) -> Option<&'a [u8]> {
+        match selector {
+            Selector::ByIndex(index) => self.captures.get(index),
+            Selector::ByName(name) => self.captures.name(name),
         }
+        .map(|capture| capture.as_bytes())
     }
 }
 
-impl<'t> From<Captures<'t>> for Find<'t> {
-    fn from(captures: Captures<'t>) -> Self {
-        Find {
-            inner: InnerFind::Regex(captures),
-        }
+impl<'a> From<Captures<'a>> for Matches<'a> {
+    fn from(captures: Captures<'a>) -> Self {
+        Matches { captures }
     }
 }
 
 #[derive(Clone, Debug)]
-enum InnerPattern {
-    Glob(Glob<'static>),
+enum InnerFromPattern<'a> {
+    Glob(Glob<'a>),
     Regex(Regex),
 }
 
 #[derive(Clone, Debug)]
-pub struct FromPattern {
-    inner: InnerPattern,
+pub struct FromPattern<'a> {
+    inner: InnerFromPattern<'a>,
 }
 
-impl FromPattern {
-    pub fn find<'t>(&self, text: &'t str) -> Option<Find<'t>> {
+impl<'a> FromPattern<'a> {
+    pub fn matches<'p>(&self, path: &'p BytePath<'_>) -> Option<Matches<'p>> {
         match self.inner {
-            InnerPattern::Regex(ref regex) => regex.captures(text).map(From::from),
-            _ => todo!(),
-        }
-    }
-
-    pub(in crate) fn read<'p>(
-        &'p self,
-        to: &'p ToPattern,
-        directory: impl AsRef<Path>,
-        depth: usize,
-    ) -> Box<dyn 'p + Iterator<Item = Result<(PathBuf, PathBuf), PatternError>>> {
-        let walk = WalkDir::new(directory.as_ref())
-            .follow_links(false)
-            .min_depth(1)
-            .max_depth(depth);
-        match self.inner {
-            InnerPattern::Regex(ref regex) => Box::new(
-                walk.into_iter()
-                    .map(|entry| entry.map_err(|error| PatternError::ReadTree(error)))
-                    .filter(|entry| {
-                        entry
-                            .as_ref()
-                            .map(|entry| entry.file_type().is_file())
-                            .unwrap_or(true)
-                    })
-                    .flat_map(move |entry| {
-                        entry
-                            .and_then(move |entry| {
-                                let source = entry.path();
-                                let mut destination = source.to_path_buf();
-                                destination.pop();
-                                source
-                                    .file_name()
-                                    .and_then(|name| name.to_str())
-                                    .and_then(|name| regex.captures(name).map(Find::from))
-                                    .as_ref()
-                                    .map(move |find| {
-                                        to.resolve(source, find).map(move |name| {
-                                            destination.push(name);
-                                            (source.to_path_buf(), destination)
-                                        })
-                                    })
-                                    .transpose()
-                            })
-                            .transpose()
-                    }),
-            ),
-            _ => todo!(),
+            InnerFromPattern::Regex(ref regex) => regex.captures(path.as_ref()).map(From::from),
+            InnerFromPattern::Glob(ref glob) => glob.captures(path).map(From::from),
         }
     }
 }
 
-impl From<Glob<'static>> for FromPattern {
-    fn from(glob: Glob<'static>) -> FromPattern {
+impl<'a> From<Glob<'a>> for FromPattern<'a> {
+    fn from(glob: Glob<'a>) -> Self {
         FromPattern {
-            inner: InnerPattern::Glob(glob),
+            inner: InnerFromPattern::Glob(glob),
         }
     }
 }
 
-impl From<Regex> for FromPattern {
-    fn from(regex: Regex) -> FromPattern {
+impl From<Regex> for FromPattern<'static> {
+    fn from(regex: Regex) -> Self {
         FromPattern {
-            inner: InnerPattern::Regex(regex),
+            inner: InnerFromPattern::Regex(regex),
         }
     }
 }

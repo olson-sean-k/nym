@@ -2,15 +2,16 @@ mod ui;
 
 use anyhow::Error;
 use console::Term;
-use regex::Regex;
+use regex::bytes::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 use nym::actuator::{Actuator, Copy, Move, Operation};
+use nym::glob::Glob;
 use nym::manifest::Manifest;
 use nym::pattern::ToPattern;
 use nym::policy::Policy;
-use nym::transform::Transform;
+use nym::transform::{MatchStrategy, Transform};
 
 use crate::ui::{IteratorExt as _, Label, Print};
 
@@ -85,15 +86,22 @@ struct UnparsedTransform {
 }
 
 impl UnparsedTransform {
-    fn parse(&self, glob: bool) -> Result<Transform<'_>, Error> {
+    fn parse(&self, glob: bool) -> Result<Transform<'_, '_>, Error> {
         Ok(Transform {
             from: if glob {
-                todo!()
+                Glob::parse(&self.from)?.into()
             }
             else {
                 Regex::new(&self.from)?.into()
             },
             to: ToPattern::parse(&self.to)?,
+            // TODO:
+            strategy: if glob {
+                MatchStrategy::Path
+            }
+            else {
+                MatchStrategy::File
+            },
         })
     }
 }
