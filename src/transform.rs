@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use walkdir::WalkDir;
 
@@ -44,6 +44,17 @@ impl MatchStrategy {
             MatchStrategy::Path => Some(BytePath::from_path(path)),
         }
     }
+
+    fn destination(&self, directory: impl AsRef<Path>, source: impl AsRef<Path>) -> PathBuf {
+        match *self {
+            MatchStrategy::File => {
+                let mut destination = source.as_ref().to_path_buf();
+                destination.pop();
+                destination
+            }
+            MatchStrategy::Path => directory.as_ref().to_path_buf(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +78,10 @@ impl<'t, 'f> Transform<'t, 'f> {
         //       iterator from `FromPattern` instead. Importantly, globs may or
         //       may not require traversing subdirectories, while regular
         //       expressions cannot specify traversals intrinsically.
+        //
+        //       Similarly, the sub-path and destination path determined by the
+        //       `MatchStrategy` should probably be controlled by the
+        //       `FromPattern`.
         let mut manifest = Manifest::default();
         for entry in WalkDir::new(directory.as_ref())
             .follow_links(false)
@@ -81,8 +96,7 @@ impl<'t, 'f> Transform<'t, 'f> {
                     .unwrap();
                 if let Some(matches) = self.from.matches(&subpath) {
                     let source = entry.path();
-                    let mut destination = source.to_path_buf();
-                    destination.pop();
+                    let mut destination = self.strategy.destination(directory.as_ref(), &source);
                     destination.push(
                         self.to
                             .resolve(source, &matches)

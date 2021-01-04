@@ -353,4 +353,18 @@ mod tests {
                 .as_bytes()
         );
     }
+
+    #[test]
+    fn match_glob_with_any_and_tree_tokens() {
+        let glob = Glob::parse("**/*.ext").unwrap();
+
+        assert!(glob.is_match(Path::new("file.ext")));
+        assert!(glob.is_match(Path::new("a/file.ext")));
+        assert!(glob.is_match(Path::new("a/b/file.ext")));
+
+        let path = BytePath::from_path(Path::new("a/file.ext"));
+        let captures = glob.captures(&path).unwrap();
+        assert_eq!(b"a", captures.get(1).unwrap().as_bytes());
+        assert_eq!(b"file", captures.get(2).unwrap().as_bytes());
+    }
 }
