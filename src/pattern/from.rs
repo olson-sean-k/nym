@@ -1,4 +1,5 @@
 use regex::bytes::{Captures, Regex};
+use std::path::Path;
 
 use crate::glob::{BytePath, Glob};
 
@@ -33,29 +34,58 @@ impl<'a> From<Captures<'a>> for Matches<'a> {
 }
 
 #[derive(Clone, Debug)]
-enum InnerFromPattern<'a> {
+pub struct Candidate<'p> {
+    source: BytePath<'p>,
+    destination: &'p Path,
+}
+
+impl<'p> Candidate<'p> {
+    pub fn leaf(directory: &'p Path, source: &'p Path) -> Self {
+        let source = source
+            .strip_prefix(directory)
+            .expect("source path is not in tree");
+        Candidate {
+            source: BytePath::from_os_str(source.file_name().expect("source path is not a file")),
+            destination: source.parent().expect("source path has no parent"),
+        }
+    }
+
+    pub fn tree(directory: &'p Path, source: &'p Path) -> Self {
+        let source = source
+            .strip_prefix(directory)
+            .expect("source path is not in tree");
+        Candidate {
+            source: BytePath::from_path(source),
+            destination: directory,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum Format<'a> {
     Glob(Glob<'a>),
     Regex(Regex),
 }
 
 #[derive(Clone, Debug)]
 pub struct FromPattern<'a> {
-    inner: InnerFromPattern<'a>,
+    format: Format<'a>,
 }
 
 impl<'a> FromPattern<'a> {
-    pub fn matches<'p>(&self, path: &'p BytePath<'_>) -> Option<Matches<'p>> {
-        match self.inner {
-            InnerFromPattern::Regex(ref regex) => regex.captures(path.as_ref()).map(From::from),
-            InnerFromPattern::Glob(ref glob) => glob.captures(path).map(From::from),
+    pub fn apply<'p>(&self, candidate: &'p Candidate<'p>) -> Option<(Matches<'p>, &'p Path)> {
+        match self.format {
+            Format::Regex(ref regex) => regex.captures(candidate.source.as_ref()).map(From::from),
+            Format::Glob(ref glob) => glob.captures(&candidate.source).map(From::from),
         }
+        .map(|matches| (matches, candidate.destination))
     }
 }
 
 impl<'a> From<Glob<'a>> for FromPattern<'a> {
     fn from(glob: Glob<'a>) -> Self {
         FromPattern {
-            inner: InnerFromPattern::Glob(glob),
+            format: Format::Glob(glob),
         }
     }
 }
@@ -63,7 +93,7 @@ impl<'a> From<Glob<'a>> for FromPattern<'a> {
 impl From<Regex> for FromPattern<'static> {
     fn from(regex: Regex) -> Self {
         FromPattern {
-            inner: InnerFromPattern::Regex(regex),
+            format: Format::Regex(regex),
         }
     }
 }

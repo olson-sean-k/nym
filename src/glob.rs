@@ -32,7 +32,7 @@ pub struct BytePath<'a> {
 impl<'a> BytePath<'a> {
     fn from_bytes(bytes: Cow<'a, [u8]>) -> Self {
         #[cfg(unix)]
-        fn normalize(mut path: Cow<[u8]>) -> Cow<[u8]> {
+        fn normalize(path: Cow<[u8]>) -> Cow<[u8]> {
             path
         }
 
@@ -265,7 +265,6 @@ mod tests {
     use std::path::Path;
 
     use crate::glob::{BytePath, Glob};
-    use bstr::ByteSlice;
 
     #[test]
     fn parse_glob_with_any_tokens() {
