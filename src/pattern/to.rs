@@ -13,35 +13,85 @@ use Selector::ByIndex;
 use Selector::ByName;
 
 #[derive(Clone, Debug)]
-enum Capture<'a> {
+enum Identifier<'a> {
     Index(usize),
     Name(Cow<'a, str>),
 }
 
-impl<'a> Capture<'a> {
-    pub fn into_owned(self) -> Capture<'static> {
+impl<'a> Identifier<'a> {
+    pub fn into_owned(self) -> Identifier<'static> {
         match self {
-            Capture::Index(index) => index.into(),
-            Capture::Name(name) => name.into_owned().into(),
+            Identifier::Index(index) => index.into(),
+            Identifier::Name(name) => name.into_owned().into(),
         }
     }
 }
 
-impl From<usize> for Capture<'static> {
+impl From<usize> for Identifier<'static> {
     fn from(index: usize) -> Self {
-        Capture::Index(index)
+        Identifier::Index(index)
     }
 }
 
-impl<'a> From<&'a str> for Capture<'a> {
+impl<'a> From<&'a str> for Identifier<'a> {
     fn from(name: &'a str) -> Self {
-        Capture::Name(Cow::Borrowed(name))
+        Identifier::Name(Cow::Borrowed(name))
     }
 }
 
-impl From<String> for Capture<'static> {
+impl From<String> for Identifier<'static> {
     fn from(name: String) -> Self {
-        Capture::Name(Cow::Owned(name))
+        Identifier::Name(Cow::Owned(name))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Substitution<'a> {
+    prefix: Cow<'a, str>,
+    postfix: Cow<'a, str>,
+    absent: Cow<'a, str>,
+}
+
+impl<'a> Substitution<'a> {
+    pub fn into_owned(self) -> Substitution<'static> {
+        let Substitution {
+            prefix,
+            postfix,
+            absent,
+        } = self;
+        Substitution {
+            prefix: prefix.into_owned().into(),
+            postfix: postfix.into_owned().into(),
+            absent: absent.into_owned().into(),
+        }
+    }
+
+    pub fn format<'t>(&self, capture: &'t str) -> Cow<'t, str> {
+        if self.prefix.is_empty() && self.postfix.is_empty() {
+            capture.into()
+        }
+        else {
+            format!("{}{}{}", self.prefix, capture, self.postfix).into()
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Capture<'a> {
+    identifier: Identifier<'a>,
+    substitution: Option<Substitution<'a>>,
+}
+
+impl<'a> Capture<'a> {
+    pub fn into_owned(self) -> Capture<'static> {
+        let Capture {
+            identifier,
+            substitution,
+        } = self;
+        Capture {
+            identifier: identifier.into_owned(),
+            substitution: substitution.map(|substitution| substitution.into_owned()),
+        }
     }
 }
 
@@ -96,7 +146,15 @@ impl<'a> ToPattern<'a> {
         use nom::bytes::complete as bytes;
         use nom::character::complete as character;
         use nom::error::{FromExternalError, ParseError};
-        use nom::{branch, combinator, multi, sequence, IResult};
+        use nom::{branch, combinator, multi, sequence, IResult, Parser};
+
+        fn braced<'i, O, E, F>(parser: F) -> impl FnMut(&'i str) -> IResult<&'i str, O, E>
+        where
+            E: ParseError<&'i str>,
+            F: Parser<&'i str, O, E>,
+        {
+            sequence::delimited(character::char('{'), parser, character::char('}'))
+        }
 
         // TODO: Support escaping captures.
         fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
@@ -106,33 +164,74 @@ impl<'a> ToPattern<'a> {
             combinator::map(bytes::is_not("{"), From::from)(input)
         }
 
+        fn identifier<'i, E>(input: &'i str) -> IResult<&'i str, Identifier, E>
+        where
+            E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
+        {
+            branch::alt((
+                // TODO: Support empty braces. Note that using `space0`
+                //       conflicts with the alternate parsers.
+                combinator::value(Identifier::from(0), character::space1),
+                combinator::map_res(
+                    sequence::preceded(character::char('#'), character::digit1),
+                    |text: &'i str| {
+                        usize::from_str_radix(text, 10).map(|index| Identifier::from(index))
+                    },
+                ),
+                combinator::map(
+                    sequence::preceded(
+                        character::char('@'),
+                        // TODO: `regex` supports additional name characters.
+                        character::alphanumeric1,
+                    ),
+                    |text: &'i str| Identifier::from(text),
+                ),
+            ))(input)
+        }
+
+        fn substitution<'i, E>(input: &'i str) -> IResult<&'i str, Substitution, E>
+        where
+            E: ParseError<&'i str>,
+        {
+            let element = |input| {
+                combinator::opt(combinator::map(
+                    // TODO: Stopping at `:}` is probably clunky. Note that
+                    //       `character::alphanumeric0` or similar categorical
+                    //       parsers may not work well, since they cannot
+                    //       support non-ASCII characters.
+                    bytes::is_not(":}"),
+                    |text: &str| Cow::from(text),
+                ))(input)
+            };
+            combinator::map(
+                sequence::separated_pair(
+                    element,
+                    bytes::tag(":"),
+                    sequence::separated_pair(element, bytes::tag(":"), element),
+                ),
+                |(prefix, (postfix, absent))| Substitution {
+                    prefix: prefix.unwrap_or("".into()),
+                    postfix: postfix.unwrap_or("".into()),
+                    absent: absent.unwrap_or("".into()),
+                },
+            )(input)
+        }
+
         fn capture<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
         where
             E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
         {
-            sequence::delimited(
-                character::char('{'),
-                branch::alt((
-                    // TODO: Support empty braces. Note that using `space0`
-                    //       conflicts with the alternate parsers.
-                    combinator::value(Token::from(Capture::from(0)), character::space1),
-                    combinator::map_res(
-                        sequence::preceded(character::char('#'), character::digit1),
-                        |text: &'i str| {
-                            usize::from_str_radix(text, 10)
-                                .map(|index| Token::from(Capture::from(index)))
-                        },
-                    ),
-                    combinator::map(
-                        sequence::preceded(
-                            character::char('@'),
-                            // TODO: `regex` supports additional name characters.
-                            character::alphanumeric1,
-                        ),
-                        |text: &'i str| Token::from(Capture::from(text)),
-                    ),
-                )),
-                character::char('}'),
+            combinator::map(
+                braced(sequence::tuple((
+                    identifier,
+                    combinator::opt(sequence::preceded(bytes::tag("?"), substitution)),
+                ))),
+                |(identifier, substitution)| {
+                    Token::from(Capture {
+                        identifier,
+                        substitution,
+                    })
+                },
             )(input)
         }
 
@@ -140,21 +239,17 @@ impl<'a> ToPattern<'a> {
         where
             E: ParseError<&'i str>,
         {
-            sequence::delimited(
-                character::char('{'),
-                sequence::preceded(
-                    character::char('!'),
-                    branch::alt((
-                        combinator::map(bytes::tag_no_case("b3sum"), |_| {
-                            Token::Property(Property::B3Sum)
-                        }),
-                        combinator::map(bytes::tag_no_case("ts"), |_| {
-                            Token::Property(Property::Timestamp)
-                        }),
-                    )),
-                ),
-                character::char('}'),
-            )(input)
+            braced(sequence::preceded(
+                character::char('!'),
+                branch::alt((
+                    combinator::map(bytes::tag_no_case("b3sum"), |_| {
+                        Token::Property(Property::B3Sum)
+                    }),
+                    combinator::map(bytes::tag_no_case("ts"), |_| {
+                        Token::Property(Property::Timestamp)
+                    }),
+                )),
+            ))(input)
         }
 
         fn pattern<'i, E>(input: &'i str) -> IResult<&'i str, ToPattern, E>
@@ -183,28 +278,41 @@ impl<'a> ToPattern<'a> {
         source: impl AsRef<Path>,
         matches: &Matches<'_>,
     ) -> Result<String, PatternError> {
-        let encode = |bytes| -> Result<_, PatternError> {
-            str::from_utf8(bytes).map_err(|error| PatternError::Encoding(error))
-        };
         let mut output = String::new();
         for token in &self.tokens {
             match *token {
-                Token::Capture(ref capture) => match capture {
-                    Capture::Index(ref index) => {
-                        output.push_str(encode(
-                            matches
-                                .capture(ByIndex(*index))
-                                .ok_or(PatternError::CaptureNotFound)?,
-                        )?);
+                Token::Capture(Capture {
+                    ref identifier,
+                    ref substitution,
+                }) => {
+                    let capture = match identifier {
+                        Identifier::Index(ref index) => matches.capture(ByIndex(*index)),
+                        Identifier::Name(ref name) => matches.capture(ByName(name)),
                     }
-                    Capture::Name(ref name) => {
-                        output.push_str(encode(
-                            matches
-                                .capture(ByName(name))
-                                .ok_or(PatternError::CaptureNotFound)?,
-                        )?);
+                    // Do not include empty captures. This means that absent
+                    // substitutions are applied when a capture technically
+                    // participates in a match but with no bytes. This typically
+                    // occurs when using Kleene stars.
+                    .filter(|bytes| !bytes.is_empty())
+                    .map(|bytes| {
+                        str::from_utf8(bytes).map_err(|error| PatternError::Encoding(error))
+                    });
+                    let text: Cow<_> = if let Some(capture) = capture {
+                        let capture = capture?;
+                        if let Some(substitution) = substitution {
+                            substitution.format(capture)
+                        }
+                        else {
+                            capture.into()
+                        }
                     }
-                },
+                    else {
+                        let substitution =
+                            substitution.as_ref().ok_or(PatternError::CaptureNotFound)?;
+                        substitution.absent.clone()
+                    };
+                    output.push_str(text.as_ref());
+                }
                 Token::Literal(ref text) => {
                     output.push_str(text);
                 }
@@ -235,5 +343,18 @@ impl FromStr for ToPattern<'static> {
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         ToPattern::parse(text).map(|pattern| pattern.into_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pattern::ToPattern;
+
+    #[test]
+    fn parse_to_pattern_substitution() {
+        ToPattern::parse("{#1?a:b:c}").unwrap();
+        ToPattern::parse("{#1?a:b:}").unwrap();
+        ToPattern::parse("{#1?a::}").unwrap();
+        ToPattern::parse("{#1?::}").unwrap();
     }
 }
