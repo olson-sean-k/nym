@@ -37,14 +37,14 @@ where
 #[derive(Default)]
 pub struct Manifest<M>
 where
-    M: Router,
+    M: Routing,
 {
     router: M,
 }
 
 impl<M> Manifest<M>
 where
-    M: Router,
+    M: Routing,
 {
     pub fn insert(
         &mut self,
@@ -63,7 +63,7 @@ where
     }
 }
 
-pub trait Router: Default {
+pub trait Routing: Default {
     fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError>;
 
     fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SourceGroup<&'_ Path>, &'_ Path)>>;
@@ -74,7 +74,7 @@ pub struct Bijective {
     inner: BiMap<PathBuf, PathBuf>,
 }
 
-impl Router for Bijective {
+impl Routing for Bijective {
     fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError> {
         if self.inner.contains_right(&destination) {
             Err(ManifestError::PathCollision(destination))

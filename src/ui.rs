@@ -8,7 +8,7 @@ use std::cmp;
 use std::io;
 
 use nym::actuator::{Copy, Move};
-use nym::manifest::{Manifest, Router};
+use nym::manifest::{Manifest, Routing};
 
 const MIN_TERMINAL_WIDTH: usize = 16;
 
@@ -52,7 +52,7 @@ pub trait Print {
 
 impl<M> Print for Manifest<M>
 where
-    M: Router,
+    M: Routing,
 {
     fn print(&self, terminal: &Term) -> io::Result<()> {
         let routes = self.routes();

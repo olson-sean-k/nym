@@ -2,27 +2,43 @@ use std::fs;
 use std::io::{self, Error, ErrorKind};
 use std::path::Path;
 
-use crate::manifest::{Bijective, Route, Router};
-use crate::policy::Policy;
+use crate::environment::Environment;
+use crate::manifest::{Bijective, Route, Routing};
 
-#[derive(Default)]
-pub struct Actuator;
+#[derive(Clone, Debug)]
+pub struct Actuator<'e> {
+    environment: &'e Environment,
+}
 
-impl Actuator {
-    pub fn write<A, P>(&self, policy: &Policy, route: Route<A::Router, P>) -> io::Result<()>
+impl<'e> Actuator<'e> {
+    pub(in crate) fn new(environment: &'e Environment) -> Self {
+        Actuator { environment }
+    }
+
+    pub fn write<A, P>(&self, route: Route<A::Routing, P>) -> io::Result<()>
     where
         A: Operation,
         P: AsRef<Path>,
     {
-        policy.write(route.destination())?;
+        let policy = self.environment.policy();
+        if policy.parents {
+            let parent = route
+                .destination()
+                .as_ref()
+                .parent()
+                .expect("destination path has no parent");
+            if !parent.exists() {
+                fs::create_dir_all(parent)?;
+            }
+        }
         A::write(route)
     }
 }
 
 pub trait Operation {
-    type Router: Router;
+    type Routing: Routing;
 
-    fn write<P>(route: Route<Self::Router, P>) -> io::Result<()>
+    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
     where
         P: AsRef<Path>;
 }
@@ -32,9 +48,9 @@ pub enum Append {}
 pub enum Copy {}
 
 impl Operation for Copy {
-    type Router = Bijective;
+    type Routing = Bijective;
 
-    fn write<P>(route: Route<Self::Router, P>) -> io::Result<()>
+    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
     where
         P: AsRef<Path>,
     {
@@ -51,9 +67,9 @@ pub enum Link {}
 pub enum Move {}
 
 impl Operation for Move {
-    type Router = Bijective;
+    type Routing = Bijective;
 
-    fn write<P>(route: Route<Self::Router, P>) -> io::Result<()>
+    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
     where
         P: AsRef<Path>,
     {

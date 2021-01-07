@@ -6,12 +6,11 @@ use regex::bytes::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use nym::actuator::{Actuator, Copy, Move, Operation};
+use nym::actuator::{Copy, Move, Operation};
+use nym::environment::{Environment, Policy};
 use nym::glob::Glob;
 use nym::manifest::Manifest;
-use nym::pattern::ToPattern;
-use nym::policy::Policy;
-use nym::transform::Transform;
+use nym::pattern::{FromPattern, ToPattern};
 
 use crate::ui::{IteratorExt as _, Label, Print};
 
@@ -83,22 +82,20 @@ struct UnparsedTransform {
 }
 
 impl UnparsedTransform {
-    fn parse(&self, is_regex: bool) -> Result<Transform<'_, '_>, Error> {
-        Ok(Transform {
-            from: if is_regex {
-                Regex::new(&self.from)?.into()
-            }
-            else {
-                Glob::parse(&self.from)?.into()
-            },
-            to: ToPattern::parse(&self.to)?,
-        })
+    fn parse(&self, is_regex: bool) -> Result<(FromPattern<'_>, ToPattern<'_>), Error> {
+        let from = if is_regex {
+            Regex::new(&self.from)?.into()
+        }
+        else {
+            Glob::parse(&self.from)?.into()
+        };
+        let to = ToPattern::parse(&self.to)?;
+        Ok((from, to))
     }
 }
 
 struct Harness {
-    actuator: Actuator,
-    policy: Policy,
+    environment: Environment,
     directory: PathBuf,
     depth: usize,
     force: bool,
@@ -106,13 +103,14 @@ struct Harness {
 }
 
 impl Harness {
-    fn execute<A>(&self, transform: &Transform) -> Result<(), Error>
+    fn run<A>(&self, from: FromPattern<'_>, to: ToPattern<'_>) -> Result<(), Error>
     where
         A: Label + Operation,
     {
         let terminal = Term::stderr();
-        let manifest: Manifest<A::Router> =
-            transform.read(&self.policy, &self.directory, self.depth)?;
+        let transform = self.environment.transform(from, to);
+        let actuator = self.environment.actuator();
+        let manifest: Manifest<A::Routing> = transform.read(&self.directory, self.depth)?;
         if !self.quiet {
             manifest.print(&terminal)?;
             ui::print_warning(&terminal, DISCLAIMER)?;
@@ -128,7 +126,7 @@ impl Harness {
             )?
         {
             for route in manifest.routes().print_progress(terminal) {
-                self.actuator.write::<A, _>(&self.policy, route)?;
+                actuator.write::<A, _>(route)?;
             }
         }
         Ok(())
@@ -138,11 +136,10 @@ impl Harness {
 fn main() -> Result<(), Error> {
     let options = Options::from_args();
     let harness = Harness {
-        actuator: Actuator::default(),
-        policy: Policy {
+        environment: Environment::new(Policy {
             parents: options.parents,
             overwrite: options.overwrite,
-        },
+        }),
         directory: options.directory,
         depth: if options.recursive { usize::MAX } else { 1 },
         force: options.force,
@@ -151,13 +148,13 @@ fn main() -> Result<(), Error> {
     match options.command {
         Command::Append { .. } => todo!(),
         Command::Copy { transform, .. } => {
-            let transform = transform.parse(options.regex)?;
-            harness.execute::<Copy>(&transform)?;
+            let (from, to) = transform.parse(options.regex)?;
+            harness.run::<Copy>(from, to)?;
         }
         Command::Link { .. } => todo!(),
         Command::Move { transform, .. } => {
-            let transform = transform.parse(options.regex)?;
-            harness.execute::<Move>(&transform)?;
+            let (from, to) = transform.parse(options.regex)?;
+            harness.run::<Move>(from, to)?;
         }
     }
     Ok(())
