@@ -6,7 +6,7 @@ use std::num::ParseIntError;
 use std::path::Path;
 use std::str::{self, FromStr};
 
-use crate::pattern::from::{Matches, Selector};
+use crate::pattern::from::{Captures, Selector};
 use crate::pattern::PatternError;
 
 use Selector::ByIndex;
@@ -276,7 +276,7 @@ impl<'a> ToPattern<'a> {
     pub fn resolve(
         &self,
         source: impl AsRef<Path>,
-        matches: &Matches<'_>,
+        captures: &Captures<'_>,
     ) -> Result<String, PatternError> {
         let mut output = String::new();
         for token in &self.tokens {
@@ -286,8 +286,8 @@ impl<'a> ToPattern<'a> {
                     ref substitution,
                 }) => {
                     let capture = match identifier {
-                        Identifier::Index(ref index) => matches.capture(ByIndex(*index)),
-                        Identifier::Name(ref name) => matches.capture(ByName(name)),
+                        Identifier::Index(ref index) => captures.get(ByIndex(*index)),
+                        Identifier::Name(ref name) => captures.get(ByName(name)),
                     }
                     // Do not include empty captures. This means that absent
                     // substitutions are applied when a capture technically

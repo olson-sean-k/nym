@@ -6,7 +6,7 @@ use std::io;
 use std::str::Utf8Error;
 use thiserror::Error;
 
-pub use crate::pattern::from::{Candidate, FromPattern, Matches};
+pub use crate::pattern::from::{Candidate, Captures, FromPattern};
 pub use crate::pattern::to::ToPattern;
 
 #[derive(Debug, Error)]

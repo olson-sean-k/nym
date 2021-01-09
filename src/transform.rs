@@ -71,11 +71,11 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
             if entry.file_type().is_file() {
                 let source = entry.path();
                 let candidate = Candidate::tree(directory.as_ref(), source);
-                if let Some((matches, destination)) = self.from.apply(&candidate) {
+                if let Some((captures, destination)) = self.from.captures(&candidate) {
                     let mut destination = destination.to_path_buf();
                     destination.push(
                         self.to
-                            .resolve(source, &matches)
+                            .resolve(source, &captures)
                             .map_err(|error| TransformError::PatternResolution(error))?,
                     );
                     let parent = destination
