@@ -169,9 +169,6 @@ impl<'a> ToPattern<'a> {
             E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
         {
             branch::alt((
-                // TODO: Support empty braces. Note that using `space0`
-                //       conflicts with the alternate parsers.
-                combinator::value(Identifier::from(0), character::space1),
                 combinator::map_res(
                     sequence::preceded(character::char('#'), character::digit1),
                     |text: &'i str| {
@@ -186,6 +183,7 @@ impl<'a> ToPattern<'a> {
                     ),
                     |text: &'i str| Identifier::from(text),
                 ),
+                combinator::value(Identifier::from(0), character::space0),
             ))(input)
         }
 
