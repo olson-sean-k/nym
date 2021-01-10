@@ -242,6 +242,20 @@ impl<'a> Glob<'a> {
         Glob { tokens, regex }
     }
 
+    // TODO: Detect rooted globs on Unix platforms and either print a warning or
+    //       interact with the `--tree` option.
+    #[cfg(unix)]
+    pub fn is_rooted(&self) -> bool {
+        self.tokens
+            .iter()
+            .next()
+            .map(|token| match *token {
+                Token::Literal(ref literal) => literal.as_ref().starts_with("/"),
+                _ => false,
+            })
+            .unwrap_or(false)
+    }
+
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
         let path = BytePath::from_path(path.as_ref());
         self.regex.is_match(&path.path)
