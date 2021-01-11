@@ -3,7 +3,7 @@ use itertools::{Itertools as _, Position};
 use nom::error::ErrorKind;
 use regex::bytes::Regex;
 use std::borrow::Cow;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::str::FromStr;
 use thiserror::Error;
 
@@ -242,18 +242,39 @@ impl<'a> Glob<'a> {
         Glob { tokens, regex }
     }
 
-    // TODO: Detect rooted globs on Unix platforms and either print a warning or
-    //       interact with the `--tree` option.
-    #[cfg(unix)]
-    pub fn is_rooted(&self) -> bool {
-        self.tokens
-            .iter()
-            .next()
-            .map(|token| match *token {
-                Token::Literal(ref literal) => literal.as_ref().starts_with("/"),
-                _ => false,
-            })
-            .unwrap_or(false)
+    pub fn is_absolute(&self) -> bool {
+        self.with_literal_prefix(|literal| {
+            literal
+                .map(|literal| {
+                    let path = Path::new(literal.as_ref());
+                    path.is_absolute()
+                })
+                .unwrap_or(false)
+        })
+    }
+
+    pub fn has_root(&self) -> bool {
+        self.with_literal_prefix(|literal| {
+            literal
+                .map(|literal| {
+                    let path = Path::new(literal.as_ref());
+                    path.has_root()
+                })
+                .unwrap_or(false)
+        })
+    }
+
+    // TODO: Unix-like globs do not interact well with Windows path prefixes.
+    pub fn has_prefix(&self) -> bool {
+        self.with_literal_prefix(|literal| {
+            literal
+                .and_then(|literal| {
+                    let path = Path::new(literal.as_ref());
+                    path.components().next()
+                })
+                .map(|component| matches!(component, Component::Prefix(_)))
+                .unwrap_or(false)
+        })
     }
 
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
@@ -263,6 +284,16 @@ impl<'a> Glob<'a> {
 
     pub fn captures<'p>(&self, path: &'p BytePath<'_>) -> Option<Captures<'p>> {
         self.regex.captures(path.as_ref())
+    }
+
+    fn with_literal_prefix<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(Option<&Cow<str>>) -> T,
+    {
+        f(self.tokens.iter().next().and_then(|token| match *token {
+            Token::Literal(ref literal) => Some(literal),
+            _ => None,
+        }))
     }
 }
 
