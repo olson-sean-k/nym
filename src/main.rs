@@ -26,9 +26,15 @@ struct Options {
     /// Use regular expressions (instead of globs) for from-patterns.
     #[structopt(long = "regex", short = "X")]
     regex: bool,
-    /// The working directory.
+    /// The working directory tree.
     #[structopt(long = "tree", short = "C", default_value = ".")]
     directory: PathBuf,
+    /// Descend at most to this depth in the working directory tree.
+    ///
+    /// A depth of zero only includes files within the working directory (there
+    /// is no recursion).
+    #[structopt(long = "depth", default_value = "1000000")]
+    depth: usize,
     /// Perform operations without interactive prompts and ignoring warnings.
     #[structopt(long = "force", short = "f")]
     force: bool,
@@ -41,9 +47,6 @@ struct Options {
     /// Do not print additional information nor warnings.
     #[structopt(long = "quiet", short = "q")]
     quiet: bool,
-    /// Apply from-patterns recursively in the working directory tree.
-    #[structopt(long = "recursive", short = "R")]
-    recursive: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -141,7 +144,7 @@ fn main() -> Result<(), Error> {
             overwrite: options.overwrite,
         }),
         directory: options.directory,
-        depth: if options.recursive { usize::MAX } else { 1 },
+        depth: options.depth + 1,
         force: options.force,
         quiet: options.quiet,
     };
