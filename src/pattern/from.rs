@@ -59,6 +59,10 @@ impl<'p> Candidate<'p> {
             destination: directory,
         }
     }
+
+    pub fn destination(&self) -> &'p Path {
+        self.destination
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -73,14 +77,13 @@ pub struct FromPattern<'a> {
 }
 
 impl<'a> FromPattern<'a> {
-    pub fn captures<'p>(&self, candidate: &'p Candidate<'p>) -> Option<(Captures<'p>, &'p Path)> {
+    pub fn captures<'p>(&self, candidate: &'p Candidate<'p>) -> Option<Captures<'p>> {
         match self.inner {
             InnerPattern::Regex(ref regex) => {
                 regex.captures(candidate.source.as_ref()).map(From::from)
             }
             InnerPattern::Glob(ref glob) => glob.captures(&candidate.source).map(From::from),
         }
-        .map(|matches| (matches, candidate.destination))
     }
 }
 

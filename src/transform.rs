@@ -71,8 +71,8 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
             if entry.file_type().is_file() {
                 let source = entry.path();
                 let candidate = Candidate::tree(directory.as_ref(), source);
-                if let Some((captures, destination)) = self.from.captures(&candidate) {
-                    let mut destination = destination.to_path_buf();
+                if let Some(captures) = self.from.captures(&candidate) {
+                    let mut destination = candidate.destination().to_path_buf();
                     destination.push(
                         self.to
                             .resolve(source, &captures)
