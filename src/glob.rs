@@ -73,9 +73,9 @@ impl<'a> AsRef<[u8]> for BytePath<'a> {
 
 #[derive(Clone, Copy, Debug)]
 enum Wildcard {
-    One,  // ?
-    Many, // *
-    Tree, // **
+    One,        // ?
+    ZeroOrMore, // *
+    Tree,       // **
 }
 
 #[derive(Clone, Debug)]
@@ -152,7 +152,7 @@ impl<'a> Glob<'a> {
                     }
                 }
                 (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
-                (_, Token::Wildcard(Wildcard::Many)) => push("([^/]*)"),
+                (_, Token::Wildcard(Wildcard::ZeroOrMore)) => push("([^/]*)"),
                 (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*)/)"),
                 (Position::Middle(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*)/)"),
                 (Position::Last(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|/(.*))"),
@@ -206,7 +206,7 @@ impl<'a> Glob<'a> {
                     |_| Token::from(Wildcard::Tree),
                 ),
                 sequence::terminated(
-                    combinator::map(bytes::tag("*"), |_| Token::from(Wildcard::Many)),
+                    combinator::map(bytes::tag("*"), |_| Token::from(Wildcard::ZeroOrMore)),
                     branch::alt((combinator::peek(bytes::is_not("*")), combinator::eof)),
                 ),
             ))(input)
@@ -312,7 +312,7 @@ mod tests {
     use crate::glob::{BytePath, Glob};
 
     #[test]
-    fn parse_glob_with_any_tokens() {
+    fn parse_glob_with_zom_tokens() {
         Glob::parse("*").unwrap();
         Glob::parse("a/*").unwrap();
         Glob::parse("*a").unwrap();
@@ -333,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_glob_with_any_and_one_tokens() {
+    fn parse_glob_with_one_and_zom_tokens() {
         Glob::parse("?*").unwrap();
         Glob::parse("*?").unwrap();
         Glob::parse("*/?").unwrap();
@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn reject_glob_with_adjacent_any_or_tree_tokens() {
+    fn reject_glob_with_adjacent_tree_or_zom_tokens() {
         assert!(Glob::parse("***").is_err());
         assert!(Glob::parse("****").is_err());
         assert!(Glob::parse("**/*/***").is_err());
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn match_glob_with_any_and_tree_tokens() {
+    fn match_glob_with_tree_and_zom_tokens() {
         let glob = Glob::parse("**/*.ext").unwrap();
 
         assert!(glob.is_match(Path::new("file.ext")));
