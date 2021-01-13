@@ -62,7 +62,9 @@ impl Operation for Copy {
     }
 }
 
-pub enum Link {}
+pub enum HardLink {}
+
+pub enum SoftLink {}
 
 pub enum Move {}
 

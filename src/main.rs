@@ -20,21 +20,21 @@ const DISCLAIMER: &str = "paths may be ambiguous and undetected collisions may c
 /// Append, copy, link, and move files using patterns.
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
-struct Options {
+struct Program {
     #[structopt(subcommand)]
     command: Command,
+    /// Working directory tree.
+    #[structopt(long = "tree", short = "C", default_value = ".")]
+    directory: PathBuf,
+    /// Maximum depth traversed into the working directory tree.
+    ///
+    /// A depth of zero only includes files within the working directory (there
+    /// is no traversal into directories).
+    #[structopt(long = "depth", default_value = "255")]
+    depth: usize,
     /// Use regular expressions (instead of globs) for from-patterns.
     #[structopt(long = "regex", short = "X")]
     regex: bool,
-    /// The working directory tree.
-    #[structopt(long = "tree", short = "C", default_value = ".")]
-    directory: PathBuf,
-    /// Descend at most to this depth in the working directory tree.
-    ///
-    /// A depth of zero only includes files within the working directory (there
-    /// is no recursion).
-    #[structopt(long = "depth", default_value = "1000000")]
-    depth: usize,
     /// Perform operations without interactive prompts and ignoring warnings.
     #[structopt(long = "force", short = "f")]
     force: bool,
@@ -47,6 +47,62 @@ struct Options {
     /// Do not print additional information nor warnings.
     #[structopt(long = "quiet", short = "q")]
     quiet: bool,
+}
+
+impl Program {
+    pub fn run(&self) -> Result<(), Error> {
+        let environment = Environment::new(Policy {
+            parents: self.parents,
+            overwrite: self.overwrite,
+        });
+        match self.command {
+            Command::Append { .. } => todo!("append"),
+            Command::Copy { ref transform, .. } => {
+                let (from, to) = transform.parse(self.regex)?;
+                self.read_and_write::<Copy>(environment, from, to)?;
+            }
+            Command::Link { .. } => todo!("link"),
+            Command::Move { ref transform, .. } => {
+                let (from, to) = transform.parse(self.regex)?;
+                self.read_and_write::<Move>(environment, from, to)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_and_write<A>(
+        &self,
+        environment: Environment,
+        from: FromPattern<'_>,
+        to: ToPattern<'_>,
+    ) -> Result<(), Error>
+    where
+        A: Label + Operation,
+    {
+        let terminal = Term::stderr();
+        let transform = environment.transform(from, to);
+        let actuator = environment.actuator();
+        let manifest: Manifest<A::Routing> = transform.read(&self.directory, self.depth + 1)?;
+        if !self.quiet {
+            manifest.print(&terminal)?;
+            ui::print_warning(&terminal, DISCLAIMER)?;
+        }
+        if self.force
+            || ui::confirmation(
+                &terminal,
+                format!(
+                    "Ready to {} into {} files. Continue?",
+                    A::LABEL,
+                    manifest.routes().len(),
+                ),
+            )?
+        {
+            for route in manifest.routes().print_progress(terminal) {
+                actuator.write::<A, _>(route)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -62,13 +118,28 @@ enum Command {
         #[structopt(flatten)]
         transform: UnparsedTransform,
     },
-    /// Symbolically links matched files.
+    /// Links matched files.
     Link {
-        #[structopt(flatten)]
-        transform: UnparsedTransform,
+        #[structopt(subcommand)]
+        link: Link,
     },
     /// Moves matched files.
     Move {
+        #[structopt(flatten)]
+        transform: UnparsedTransform,
+    },
+}
+
+#[derive(Debug, StructOpt)]
+#[structopt(rename_all = "kebab-case")]
+enum Link {
+    /// Links matched files.
+    Hard {
+        #[structopt(flatten)]
+        transform: UnparsedTransform,
+    },
+    /// Symbolically links matched files.
+    Soft {
         #[structopt(flatten)]
         transform: UnparsedTransform,
     },
@@ -97,68 +168,6 @@ impl UnparsedTransform {
     }
 }
 
-struct Harness {
-    environment: Environment,
-    directory: PathBuf,
-    depth: usize,
-    force: bool,
-    quiet: bool,
-}
-
-impl Harness {
-    fn run<A>(&self, from: FromPattern<'_>, to: ToPattern<'_>) -> Result<(), Error>
-    where
-        A: Label + Operation,
-    {
-        let terminal = Term::stderr();
-        let transform = self.environment.transform(from, to);
-        let actuator = self.environment.actuator();
-        let manifest: Manifest<A::Routing> = transform.read(&self.directory, self.depth)?;
-        if !self.quiet {
-            manifest.print(&terminal)?;
-            ui::print_warning(&terminal, DISCLAIMER)?;
-        }
-        if self.force
-            || ui::confirmation(
-                &terminal,
-                format!(
-                    "Ready to {} into {} files. Continue?",
-                    A::LABEL,
-                    manifest.routes().len(),
-                ),
-            )?
-        {
-            for route in manifest.routes().print_progress(terminal) {
-                actuator.write::<A, _>(route)?;
-            }
-        }
-        Ok(())
-    }
-}
-
 fn main() -> Result<(), Error> {
-    let options = Options::from_args();
-    let harness = Harness {
-        environment: Environment::new(Policy {
-            parents: options.parents,
-            overwrite: options.overwrite,
-        }),
-        directory: options.directory,
-        depth: options.depth + 1,
-        force: options.force,
-        quiet: options.quiet,
-    };
-    match options.command {
-        Command::Append { .. } => todo!(),
-        Command::Copy { transform, .. } => {
-            let (from, to) = transform.parse(options.regex)?;
-            harness.run::<Copy>(from, to)?;
-        }
-        Command::Link { .. } => todo!(),
-        Command::Move { transform, .. } => {
-            let (from, to) = transform.parse(options.regex)?;
-            harness.run::<Move>(from, to)?;
-        }
-    }
-    Ok(())
+    Program::from_args().run()
 }
