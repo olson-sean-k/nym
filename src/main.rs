@@ -33,7 +33,7 @@ struct Program {
     #[structopt(long = "depth", default_value = "255")]
     depth: usize,
     /// Use regular expressions (instead of globs) for from-patterns.
-    #[structopt(long = "regex", short = "X")]
+    #[structopt(long = "regex", short = "x")]
     regex: bool,
     /// Perform operations without interactive prompts and ignoring warnings.
     #[structopt(long = "force", short = "f")]
