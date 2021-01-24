@@ -1,3 +1,4 @@
+use faccess::PathExt as _;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use walkdir::WalkDir;
@@ -20,12 +21,10 @@ pub enum TransformError {
     DestinationAlreadyExists(PathBuf),
     #[error("destination parent directory does not exist: `{0}`")]
     DestinationOrphaned(PathBuf),
-}
-
-impl From<ManifestError> for TransformError {
-    fn from(error: ManifestError) -> Self {
-        TransformError::Route(error)
-    }
+    #[error("cannot write to destination: `{0}`")]
+    DestinationNotWritable(PathBuf),
+    #[error("cannot read from source: `{0}`")]
+    SourceNotReadable(PathBuf),
 }
 
 #[derive(Clone, Debug)]
@@ -56,7 +55,6 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
     where
         M: Routing,
     {
-        let policy = self.environment.policy();
         let mut manifest = Manifest::default();
         // TODO: This is inefficient, since glob from-patterns determine if
         //       recursion is necessary or should continue when a particular
@@ -78,25 +76,65 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
                             .resolve(source, &captures)
                             .map_err(|error| TransformError::PatternResolution(error))?,
                     );
-                    let parent = destination
-                        .parent()
-                        .expect("destination path has no parent");
-                    if !policy.parents && !parent.exists() {
-                        return Err(TransformError::DestinationOrphaned(destination));
-                    }
-                    if let Ok(metadata) = destination.metadata() {
-                        if metadata.is_dir() {
-                            return Err(TransformError::DestinationNotAFile(destination));
-                        }
-                        else if !policy.overwrite {
-                            return Err(TransformError::DestinationAlreadyExists(destination));
-                        }
-                    }
-
-                    manifest.insert(source, destination)?;
+                    let (source, destination) = self.try_apply_policy(source, destination)?;
+                    manifest
+                        .insert(source, destination)
+                        .map_err(|error| TransformError::Route(error))?;
                 }
             }
         }
         Ok(manifest)
+    }
+
+    // TODO: Are write permissions checked properly here? Parent directories are
+    //       not queried directly.
+    fn try_apply_policy(
+        &self,
+        source: impl Into<PathBuf>,
+        destination: impl Into<PathBuf>,
+    ) -> Result<(PathBuf, PathBuf), TransformError> {
+        let policy = self.environment.policy();
+        let source = source.into();
+        let destination = destination.into();
+        if !source.readable() {
+            return Err(TransformError::SourceNotReadable(source));
+        }
+        if let Ok(metadata) = destination.metadata() {
+            if policy.overwrite {
+                if metadata.is_dir() {
+                    return Err(TransformError::DestinationNotAFile(destination));
+                }
+                else if !destination.writable() {
+                    return Err(TransformError::DestinationNotWritable(destination));
+                }
+            }
+            else {
+                return Err(TransformError::DestinationAlreadyExists(destination));
+            }
+        }
+        else {
+            let parent = destination
+                .parent()
+                .expect("destination path has no parent");
+            if policy.parents {
+                let parent = parent
+                    .ancestors()
+                    .filter(|path| path.exists())
+                    .next()
+                    .expect("destination path has no existing ancestor");
+                if !parent.writable() {
+                    return Err(TransformError::DestinationNotWritable(destination));
+                }
+            }
+            else {
+                if !parent.exists() {
+                    return Err(TransformError::DestinationOrphaned(destination));
+                }
+                if !parent.writable() {
+                    return Err(TransformError::DestinationNotWritable(destination));
+                }
+            }
+        }
+        Ok((source, destination))
     }
 }

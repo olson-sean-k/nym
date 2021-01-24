@@ -133,7 +133,7 @@ enum Command {
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 enum Link {
-    /// Links matched files.
+    /// Hard links matched files.
     Hard {
         #[structopt(flatten)]
         transform: UnparsedTransform,
