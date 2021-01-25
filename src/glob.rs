@@ -389,7 +389,7 @@ mod tests {
         assert!(!glob.is_match(Path::new("b/a")));
 
         assert_eq!(
-            b"x/y/z",
+            b"x/y/z/",
             glob.captures(&BytePath::from_path(Path::new("a/x/y/z/b")))
                 .unwrap()
                 .get(1)
@@ -408,7 +408,7 @@ mod tests {
 
         let path = BytePath::from_path(Path::new("a/file.ext"));
         let captures = glob.captures(&path).unwrap();
-        assert_eq!(b"a", captures.get(1).unwrap().as_bytes());
+        assert_eq!(b"a/", captures.get(1).unwrap().as_bytes());
         assert_eq!(b"file", captures.get(2).unwrap().as_bytes());
     }
 }
