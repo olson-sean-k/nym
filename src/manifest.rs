@@ -80,7 +80,8 @@ impl Routing for Bijective {
             Err(ManifestError::PathCollision(destination))
         }
         else {
-            Ok(self.inner.insert_no_overwrite(source, destination).unwrap())
+            self.inner.insert_no_overwrite(source, destination).unwrap();
+            Ok(())
         }
     }
 

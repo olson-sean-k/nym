@@ -138,7 +138,7 @@ where
 }
 
 pub fn print_warning(terminal: &Term, warning: impl AsRef<str>) -> io::Result<()> {
-    const HEADER: &'static str = "Warning";
+    const HEADER: &str = "Warning";
     let margin = HEADER.len() + 2;
     let width = width(terminal, margin);
     for line in textwrap::wrap(warning.as_ref(), width)

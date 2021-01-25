@@ -225,7 +225,7 @@ impl<'a> Glob<'a> {
         {
             combinator::all_consuming(combinator::map_res(
                 multi::many1(branch::alt((literal, wildcard, separator))),
-                |tokens| Glob::from_tokens(tokens),
+                Glob::from_tokens,
             ))(input)
         }
 
@@ -290,7 +290,7 @@ impl<'a> Glob<'a> {
     where
         F: FnOnce(Option<&Cow<str>>) -> T,
     {
-        f(self.tokens.iter().next().and_then(|token| match *token {
+        f(self.tokens.get(0).and_then(|token| match *token {
             Token::Literal(ref literal) => Some(literal),
             _ => None,
         }))

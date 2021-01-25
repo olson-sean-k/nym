@@ -65,7 +65,7 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
             .min_depth(1)
             .max_depth(depth)
         {
-            let entry = entry.map_err(|error| TransformError::ReadTree(error))?;
+            let entry = entry.map_err(TransformError::ReadTree)?;
             if entry.file_type().is_file() {
                 let source = entry.path();
                 let candidate = Candidate::tree(directory.as_ref(), source);
@@ -74,14 +74,14 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
                     destination.push(
                         self.to
                             .resolve(source, &captures)
-                            .map_err(|error| TransformError::PatternResolution(error))?,
+                            .map_err(TransformError::PatternResolution)?,
                     );
                     let (source, destination) = self.try_apply_policy(source, destination)?;
                     let source = normalize(source);
                     let destination = normalize(destination);
                     manifest
                         .insert(source, destination)
-                        .map_err(|error| TransformError::Route(error))?;
+                        .map_err(TransformError::Route)?;
                 }
             }
         }
@@ -121,8 +121,7 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
             if policy.parents {
                 let parent = parent
                     .ancestors()
-                    .filter(|path| path.exists())
-                    .next()
+                    .find(|path| path.exists())
                     .expect("destination path has no existing ancestor");
                 if !parent.writable() {
                     return Err(TransformError::DestinationNotWritable(destination));

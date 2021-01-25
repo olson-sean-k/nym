@@ -171,9 +171,7 @@ impl<'a> ToPattern<'a> {
             branch::alt((
                 combinator::map_res(
                     sequence::preceded(character::char('#'), character::digit1),
-                    |text: &'i str| {
-                        usize::from_str_radix(text, 10).map(|index| Identifier::from(index))
-                    },
+                    |text: &'i str| usize::from_str_radix(text, 10).map(Identifier::from),
                 ),
                 combinator::map(
                     sequence::preceded(
@@ -181,7 +179,7 @@ impl<'a> ToPattern<'a> {
                         // TODO: `regex` supports additional name characters.
                         character::alphanumeric1,
                     ),
-                    |text: &'i str| Identifier::from(text),
+                    Identifier::from,
                 ),
                 combinator::value(Identifier::from(0), character::space0),
             ))(input)
@@ -198,7 +196,7 @@ impl<'a> ToPattern<'a> {
                     //       parsers may not work well, since they cannot
                     //       support non-ASCII characters.
                     bytes::is_not(":}"),
-                    |text: &str| Cow::from(text),
+                    Cow::from,
                 ))(input)
             };
             combinator::map(
@@ -208,9 +206,9 @@ impl<'a> ToPattern<'a> {
                     sequence::separated_pair(element, bytes::tag(":"), element),
                 ),
                 |(prefix, (postfix, absent))| Substitution {
-                    prefix: prefix.unwrap_or("".into()),
-                    postfix: postfix.unwrap_or("".into()),
-                    absent: absent.unwrap_or("".into()),
+                    prefix: prefix.unwrap_or_else(|| "".into()),
+                    postfix: postfix.unwrap_or_else(|| "".into()),
+                    absent: absent.unwrap_or_else(|| "".into()),
                 },
             )(input)
         }
@@ -292,9 +290,7 @@ impl<'a> ToPattern<'a> {
                     // participates in a match but with no bytes. This typically
                     // occurs when using Kleene stars.
                     .filter(|bytes| !bytes.is_empty())
-                    .map(|bytes| {
-                        str::from_utf8(bytes).map_err(|error| PatternError::Encoding(error))
-                    });
+                    .map(|bytes| str::from_utf8(bytes).map_err(PatternError::Encoding));
                     let text: Cow<_> = if let Some(capture) = capture {
                         let capture = capture?;
                         if let Some(substitution) = substitution {
@@ -327,14 +323,14 @@ impl<'a> ToPattern<'a> {
                     Property::B3Sum => {
                         let hash = blake3::hash(
                             fs::read(source.as_ref())
-                                .map_err(|error| PatternError::ReadProperty(error))?
+                                .map_err(PatternError::ReadProperty)?
                                 .as_ref(),
                         );
                         output.push_str(hash.to_hex().as_str());
                     }
                     Property::Timestamp => {
-                        let metadata = fs::metadata(source.as_ref())
-                            .map_err(|error| PatternError::ReadProperty(error))?;
+                        let metadata =
+                            fs::metadata(source.as_ref()).map_err(PatternError::ReadProperty)?;
                         let time = FileTime::from_last_modification_time(&metadata);
                         output.push_str(&format!("{}", time));
                     }
