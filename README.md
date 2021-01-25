@@ -1,5 +1,5 @@
 **Nym** is a library and command line tool for manipulating files using
-patterns.
+patterns. It is inspired by and very loosely based upon `mmv`.
 
 [![GitHub](https://img.shields.io/badge/GitHub-olson--sean--k/nym-8da0cb?logo=github&style=for-the-badge)](https://github.com/olson-sean-k/nym)
 [![docs.rs](https://img.shields.io/badge/docs.rs-nym-66c2a5?logo=rust&style=for-the-badge)](https://docs.rs/nym)
@@ -32,12 +32,12 @@ example.
 Globs resemble literal paths, but support three special tokens: the tree token
 `**`, the zero-or-more token `*`, and the exactly-one token `?`.
 
-The tree token `**` matches zero or more sub-directories. This is the only way to
-match against directories; all other tokens do **not** match across directory
-boundaries. When a tree token participates in a match, its capture includes a
-trailing path separator. If a tree token does not participate in a match, its
-capture is an empty string with no path separator. Tree tokens cannot be
-adjacent to any other tokens.
+The tree token `**` matches zero or more sub-directories. This is the only way
+to match against directories; all other tokens do **not** match across directory
+boundaries. When a tree token participates in a match and does not terminate the
+pattern, its capture includes a trailing path separator. If a tree token does
+not participate in a match, its capture is an empty string with no path
+separator. Tree tokens cannot be adjacent to any other tokens.
 
 The zero-or-more token `*` matches zero or more of any character **except path
 separators**. Zero-or-more tokens cannot be adjacent to other zero-or-more
