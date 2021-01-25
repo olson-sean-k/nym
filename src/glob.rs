@@ -153,8 +153,8 @@ impl<'a> Glob<'a> {
                 }
                 (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
                 (_, Token::Wildcard(Wildcard::ZeroOrMore)) => push("([^/]*)"),
-                (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*)/)"),
-                (Position::Middle(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*)/)"),
+                (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*/))"),
+                (Position::Middle(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*/))"),
                 (Position::Last(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|/(.*))"),
                 (Position::Only(()), Token::Wildcard(Wildcard::Tree)) => push("(.*)"),
             }

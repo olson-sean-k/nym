@@ -305,9 +305,18 @@ impl<'a> ToPattern<'a> {
                         }
                     }
                     else {
-                        let substitution =
-                            substitution.as_ref().ok_or(PatternError::CaptureNotFound)?;
-                        substitution.absent.clone()
+                        // TODO: If there is no substitution here, a
+                        //       `CaptureNotFound` error could be emitted, but
+                        //       an empty string is a reasonable output.
+                        //       Moreover, the `regex` crate does not provide a
+                        //       way to distinguish between the existence of a
+                        //       capture in an expression vs. its participation
+                        //       in a match. Is there some way to reconcile
+                        //       this?
+                        substitution
+                            .as_ref()
+                            .map(|substitution| substitution.absent.clone())
+                            .unwrap_or_else(|| "".into())
                     };
                     output.push_str(text.as_ref());
                 }
