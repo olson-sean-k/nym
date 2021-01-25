@@ -29,3 +29,6 @@ structopt = "^0.3.0"
 textwrap = "^0.13.0"
 thiserror = "^1.0.0"
 walkdir = "^2.3.0"
+
+[target.'cfg(target_os = "windows")'.dependencies.path-slash]
+version = "^0.1.0"

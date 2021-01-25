@@ -77,6 +77,8 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
                             .map_err(|error| TransformError::PatternResolution(error))?,
                     );
                     let (source, destination) = self.try_apply_policy(source, destination)?;
+                    let source = normalize(source);
+                    let destination = normalize(destination);
                     manifest
                         .insert(source, destination)
                         .map_err(|error| TransformError::Route(error))?;
@@ -137,4 +139,17 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
         }
         Ok((source, destination))
     }
+}
+
+#[cfg(windows)]
+fn normalize(path: PathBuf) -> PathBuf {
+    use path_slash::PathBufExt as _;
+
+    PathBuf::from_slash_lossy(path)
+}
+
+#[cfg(not(windows))]
+#[inline(always)]
+fn normalize(path: PathBuf) -> PathBuf {
+    path
 }
