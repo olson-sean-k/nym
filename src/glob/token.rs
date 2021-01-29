@@ -108,10 +108,9 @@ pub fn parse<'t>(text: &'t str) -> Result<Vec<Token<'t>>, GlobError> {
         .map_err(From::from)
 }
 
-pub fn coalesce<'t, I>(tokens: I) -> impl Iterator<Item = Token<'t>>
-where
-    I: IntoIterator<Item = Token<'t>>,
-{
+pub fn coalesce<'t>(
+    tokens: impl IntoIterator<Item = Token<'t>>,
+) -> impl Iterator<Item = Token<'t>> {
     tokens
         .into_iter()
         .dedup_by(|left, right| {

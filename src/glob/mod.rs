@@ -4,7 +4,7 @@ use bstr::ByteVec;
 use itertools::{Itertools as _, Position};
 use nom::error::ErrorKind;
 use regex::bytes::Regex;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
@@ -84,16 +84,15 @@ pub struct Glob<'t> {
 }
 
 impl<'t> Glob<'t> {
-    fn from_tokens<I>(tokens: I) -> Result<Self, GlobError>
+    fn compile<T>(tokens: impl IntoIterator<Item = T>) -> Result<Regex, GlobError>
     where
-        I: IntoIterator<Item = Token<'t>>,
+        T: Borrow<Token<'t>>,
     {
-        let tokens: Vec<_> = token::coalesce(tokens).collect();
         let mut pattern = String::new();
         let mut push = |text: &str| pattern.push_str(text);
         push("(?-u)^");
-        for token in tokens.iter().with_position() {
-            match token.lift() {
+        for token in tokens.into_iter().with_position() {
+            match token.interior_borrow().lift() {
                 (_, Token::Literal(ref literal)) => {
                     for &byte in literal.as_bytes() {
                         push(&escape(byte));
@@ -109,12 +108,13 @@ impl<'t> Glob<'t> {
             }
         }
         push("$");
-        let regex = Regex::new(&pattern).map_err(|_| GlobError::Parse)?;
-        Ok(Glob { tokens, regex })
+        Regex::new(&pattern).map_err(|_| GlobError::Parse)
     }
 
     pub fn parse(text: &'t str) -> Result<Self, GlobError> {
-        token::parse(text).and_then(Glob::from_tokens)
+        let tokens: Vec<_> = token::coalesce(token::parse(text)?).collect();
+        let regex = Glob::compile(tokens.iter())?;
+        Ok(Glob { tokens, regex })
     }
 
     pub fn into_owned(self) -> Glob<'static> {
@@ -163,29 +163,15 @@ impl<'t> Glob<'t> {
         self.regex.captures(path.as_ref())
     }
 
-    pub fn read(
-        text: &'t str,
-        directory: impl AsRef<Path>,
-        depth: usize,
-    ) -> Result<Read<'t>, GlobError> {
-        let glob = Glob::parse(text)?;
-        let directory = if let Some(prefix) = glob.path_prefix() {
+    pub fn read(self, directory: impl AsRef<Path>, depth: usize) -> Result<Read<'t>, GlobError> {
+        let directory = if let Some(prefix) = self.path_prefix() {
             directory.as_ref().join(prefix)
         }
         else {
             directory.as_ref().to_path_buf()
         };
-        let components = Path::new(text)
-            .components()
-            .flat_map(|component| match component {
-                Component::Normal(text) => Glob::parse(text.to_str().unwrap()).ok(),
-                _ => None,
-            })
-            .take_while(|glob| !glob.is_any_tree())
-            .collect();
         Ok(Read {
-            glob,
-            components,
+            glob: self,
             walk: WalkDir::new(directory)
                 .follow_links(false)
                 .min_depth(1)
@@ -212,11 +198,6 @@ impl<'t> Glob<'t> {
             }
         })
     }
-
-    fn is_any_tree(&self) -> bool {
-        self.tokens.len() == 1
-            && matches!(self.tokens.get(0).unwrap(), Token::Wildcard(Wildcard::Tree))
-    }
 }
 
 impl FromStr for Glob<'static> {
@@ -229,12 +210,18 @@ impl FromStr for Glob<'static> {
 
 pub struct Read<'t> {
     glob: Glob<'t>,
-    components: Vec<Glob<'t>>,
     //strip: PathBuf,
     walk: walkdir::IntoIter,
 }
 
 impl<'t> Read<'t> {
+    fn compile<T>(tokens: impl IntoIterator<Item = T>) -> Result<Regex, GlobError>
+    where
+        T: Borrow<Token<'t>>,
+    {
+        todo!()
+    }
+
     pub fn glob(&self) -> &Glob<'t> {
         &self.glob
     }
