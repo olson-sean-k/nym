@@ -13,6 +13,8 @@ use crate::PositionExt as _;
 pub use regex::bytes::Captures;
 use std::ffi::OsStr;
 
+const GLOB_SEPARATOR: u8 = b'/';
+
 #[derive(Debug, Error)]
 pub enum GlobError {
     #[error("failed to parse glob")]
@@ -84,7 +86,7 @@ enum Wildcard {
 #[derive(Clone, Debug)]
 enum Token<'a> {
     Literal(Cow<'a, str>),
-    Separator,
+    NonTreeSeparator,
     Wildcard(Wildcard),
 }
 
@@ -92,7 +94,7 @@ impl<'a> Token<'a> {
     pub fn into_owned(self) -> Token<'static> {
         match self {
             Token::Literal(literal) => literal.into_owned().into(),
-            Token::Separator => Token::Separator,
+            Token::NonTreeSeparator => Token::NonTreeSeparator,
             Token::Wildcard(wildcard) => Token::Wildcard(wildcard),
         }
     }
@@ -161,21 +163,23 @@ impl<'a> Glob<'a> {
             .collect();
         let mut pattern = String::new();
         let mut push = |text: &str| pattern.push_str(text);
+        let escape = |byte: u8| {
+            if byte <= ASCII_TERMINATOR {
+                regex::escape(&(byte as char).to_string())
+            }
+            else {
+                format!("\\x{:02x}", byte)
+            }
+        };
         push("(?-u)^");
         for token in tokens.iter().with_position() {
             match token.lift() {
                 (_, Token::Literal(ref literal)) => {
-                    let bytes = literal.as_bytes();
-                    for &byte in bytes {
-                        if byte <= ASCII_TERMINATOR {
-                            push(&regex::escape(&(byte as char).to_string()));
-                        }
-                        else {
-                            push(&format!("\\x{:02x}", byte));
-                        }
+                    for &byte in literal.as_bytes() {
+                        push(&escape(byte));
                     }
                 }
-                (_, Token::Separator) => {}
+                (_, Token::NonTreeSeparator) => push(&escape(b'/')),
                 (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
                 (_, Token::Wildcard(Wildcard::ZeroOrMore)) => push("([^/]*)"),
                 (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*/))"),
@@ -206,7 +210,7 @@ impl<'a> Glob<'a> {
             )
         }
 
-        // TODO: Support escaping wildcards.
+        // TODO: Support escaping wildcards as literals.
         fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
         where
             E: ParseError<&'i str>,
@@ -230,9 +234,12 @@ impl<'a> Glob<'a> {
                     ),
                     |_| Token::from(Wildcard::Tree),
                 ),
-                sequence::terminated(
-                    combinator::map(bytes::tag("*"), |_| Token::from(Wildcard::ZeroOrMore)),
-                    branch::alt((combinator::peek(bytes::is_not("*")), combinator::eof)),
+                combinator::map(
+                    sequence::terminated(
+                        bytes::tag("*"),
+                        branch::alt((combinator::peek(bytes::is_not("*")), combinator::eof)),
+                    ),
+                    |_| Token::from(Wildcard::ZeroOrMore),
                 ),
             ))(input)
         }
@@ -241,7 +248,7 @@ impl<'a> Glob<'a> {
         where
             E: ParseError<&'i str>,
         {
-            combinator::value(Token::Separator, bytes::tag("/"))(input)
+            combinator::value(Token::NonTreeSeparator, bytes::tag("/"))(input)
         }
 
         fn glob<'i, E>(input: &'i str) -> IResult<&'i str, Glob, E>
@@ -249,7 +256,7 @@ impl<'a> Glob<'a> {
             E: FromExternalError<&'i str, GlobError> + ParseError<&'i str>,
         {
             combinator::all_consuming(combinator::map_res(
-                multi::many1(branch::alt((literal, wildcard, separator))),
+                multi::many1(branch::alt((wildcard, separator, literal))),
                 Glob::from_tokens,
             ))(input)
         }
@@ -473,7 +480,6 @@ mod tests {
     #[test]
     fn match_glob_with_tree_tokens() {
         let glob = Glob::parse("a/**/b").unwrap();
-        eprintln!("{}\n{:?}", "a/**/b", glob.tokens);
 
         assert!(glob.is_match(Path::new("a/b")));
         assert!(glob.is_match(Path::new("a/x/b")));
