@@ -1,3 +1,5 @@
+mod token;
+
 use bstr::ByteVec;
 use itertools::{Itertools as _, Position};
 use nom::error::ErrorKind;
@@ -8,12 +10,11 @@ use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, WalkDir};
 
+use crate::glob::token::{Token, Wildcard};
 use crate::PositionExt as _;
 
 pub use regex::bytes::Captures;
 use std::ffi::OsStr;
-
-const GLOB_SEPARATOR: u8 = b'/';
 
 #[derive(Debug, Error)]
 pub enum GlobError {
@@ -30,12 +31,12 @@ impl<I> From<nom::Err<(I, ErrorKind)>> for GlobError {
 }
 
 #[derive(Clone, Debug)]
-pub struct BytePath<'a> {
-    path: Cow<'a, [u8]>,
+pub struct BytePath<'b> {
+    path: Cow<'b, [u8]>,
 }
 
-impl<'a> BytePath<'a> {
-    fn from_bytes(bytes: Cow<'a, [u8]>) -> Self {
+impl<'b> BytePath<'b> {
+    fn from_bytes(bytes: Cow<'b, [u8]>) -> Self {
         #[cfg(unix)]
         fn normalize(path: Cow<[u8]>) -> Cow<[u8]> {
             path
@@ -58,11 +59,11 @@ impl<'a> BytePath<'a> {
         BytePath { path }
     }
 
-    pub fn from_os_str(text: &'a OsStr) -> Self {
+    pub fn from_os_str(text: &'b OsStr) -> Self {
         Self::from_bytes(Vec::from_os_str_lossy(text))
     }
 
-    pub fn from_path<P>(path: &'a P) -> Self
+    pub fn from_path<P>(path: &'b P) -> Self
     where
         P: AsRef<Path> + ?Sized,
     {
@@ -70,107 +71,26 @@ impl<'a> BytePath<'a> {
     }
 }
 
-impl<'a> AsRef<[u8]> for BytePath<'a> {
+impl<'b> AsRef<[u8]> for BytePath<'b> {
     fn as_ref(&self) -> &[u8] {
         self.path.as_ref()
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Wildcard {
-    One,        // ?
-    ZeroOrMore, // *
-    Tree,       // **
-}
-
 #[derive(Clone, Debug)]
-enum Token<'a> {
-    Literal(Cow<'a, str>),
-    NonTreeSeparator,
-    Wildcard(Wildcard),
-}
-
-impl<'a> Token<'a> {
-    pub fn into_owned(self) -> Token<'static> {
-        match self {
-            Token::Literal(literal) => literal.into_owned().into(),
-            Token::NonTreeSeparator => Token::NonTreeSeparator,
-            Token::Wildcard(wildcard) => Token::Wildcard(wildcard),
-        }
-    }
-}
-
-impl<'a> From<&'a str> for Token<'a> {
-    fn from(literal: &'a str) -> Self {
-        Token::Literal(literal.into())
-    }
-}
-
-impl From<String> for Token<'static> {
-    fn from(literal: String) -> Self {
-        Token::Literal(literal.into())
-    }
-}
-
-impl From<Wildcard> for Token<'static> {
-    fn from(wildcard: Wildcard) -> Self {
-        Token::Wildcard(wildcard)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Glob<'a> {
-    tokens: Vec<Token<'a>>,
+pub struct Glob<'t> {
+    tokens: Vec<Token<'t>>,
     regex: Regex,
 }
 
-impl<'a> Glob<'a> {
+impl<'t> Glob<'t> {
     fn from_tokens<I>(tokens: I) -> Result<Self, GlobError>
     where
-        I: IntoIterator<Item = Token<'a>>,
+        I: IntoIterator<Item = Token<'t>>,
     {
-        const ASCII_TERMINATOR: u8 = 0x7F;
-        let tokens: Vec<_> = tokens
-            .into_iter()
-            .dedup_by(|left, right| {
-                matches!(
-                    (left, right),
-                    (
-                        Token::Wildcard(Wildcard::Tree),
-                        Token::Wildcard(Wildcard::Tree)
-                    )
-                )
-            })
-            .dedup_by(|left, right| {
-                matches!(
-                    (left, right),
-                    (
-                        Token::Wildcard(Wildcard::ZeroOrMore),
-                        Token::Wildcard(Wildcard::ZeroOrMore)
-                    )
-                )
-            })
-            .filter(|token| match &token {
-                Token::Literal(ref literal) => !literal.is_empty(),
-                _ => true,
-            })
-            .coalesce(|left, right| match (&left, &right) {
-                (Token::Literal(ref left), Token::Literal(ref right)) => {
-                    Ok(Token::Literal(format!("{}{}", left, right).into()))
-                }
-                _ => Err((left, right)),
-            })
-            .collect();
+        let tokens: Vec<_> = token::coalesce(tokens).collect();
         let mut pattern = String::new();
         let mut push = |text: &str| pattern.push_str(text);
-        let escape = |byte: u8| {
-            if byte <= ASCII_TERMINATOR {
-                regex::escape(&(byte as char).to_string())
-            }
-            else {
-                format!("\\x{:02x}", byte)
-            }
-        };
         push("(?-u)^");
         for token in tokens.iter().with_position() {
             match token.lift() {
@@ -193,77 +113,8 @@ impl<'a> Glob<'a> {
         Ok(Glob { tokens, regex })
     }
 
-    pub fn parse(text: &'a str) -> Result<Self, GlobError> {
-        use nom::bytes::complete as bytes;
-        use nom::error::{FromExternalError, ParseError};
-        use nom::{branch, combinator, multi, sequence, IResult, Parser};
-
-        fn no_adjacent_tree<'i, O, E, F>(parser: F) -> impl FnMut(&'i str) -> IResult<&'i str, O, E>
-        where
-            E: ParseError<&'i str>,
-            F: Parser<&'i str, O, E>,
-        {
-            sequence::delimited(
-                combinator::peek(combinator::not(bytes::tag("**"))),
-                parser,
-                combinator::peek(combinator::not(bytes::tag("**"))),
-            )
-        }
-
-        // TODO: Support escaping wildcards as literals.
-        fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            combinator::map(no_adjacent_tree(bytes::is_not("/?*")), From::from)(input)
-        }
-
-        fn wildcard<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            branch::alt((
-                combinator::map(no_adjacent_tree(bytes::tag("?")), |_| {
-                    Token::from(Wildcard::One)
-                }),
-                combinator::map(
-                    sequence::delimited(
-                        branch::alt((bytes::tag("/"), bytes::tag(""))),
-                        bytes::tag("**"),
-                        branch::alt((bytes::tag("/"), combinator::eof)),
-                    ),
-                    |_| Token::from(Wildcard::Tree),
-                ),
-                combinator::map(
-                    sequence::terminated(
-                        bytes::tag("*"),
-                        branch::alt((combinator::peek(bytes::is_not("*")), combinator::eof)),
-                    ),
-                    |_| Token::from(Wildcard::ZeroOrMore),
-                ),
-            ))(input)
-        }
-
-        fn separator<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            combinator::value(Token::NonTreeSeparator, bytes::tag("/"))(input)
-        }
-
-        fn glob<'i, E>(input: &'i str) -> IResult<&'i str, Glob, E>
-        where
-            E: FromExternalError<&'i str, GlobError> + ParseError<&'i str>,
-        {
-            combinator::all_consuming(combinator::map_res(
-                multi::many1(branch::alt((wildcard, separator, literal))),
-                Glob::from_tokens,
-            ))(input)
-        }
-
-        glob::<(_, ErrorKind)>(text)
-            .map(|(_, glob)| glob)
-            .map_err(Into::into)
+    pub fn parse(text: &'t str) -> Result<Self, GlobError> {
+        token::parse(text).and_then(Glob::from_tokens)
     }
 
     pub fn into_owned(self) -> Glob<'static> {
@@ -275,7 +126,7 @@ impl<'a> Glob<'a> {
     }
 
     pub fn is_absolute(&self) -> bool {
-        self.literal_prefix()
+        self.non_wildcard_prefix()
             .map(|literal| {
                 let path = Path::new(literal.as_ref());
                 path.is_absolute()
@@ -284,7 +135,7 @@ impl<'a> Glob<'a> {
     }
 
     pub fn has_root(&self) -> bool {
-        self.literal_prefix()
+        self.non_wildcard_prefix()
             .map(|literal| {
                 let path = Path::new(literal.as_ref());
                 path.has_root()
@@ -294,7 +145,7 @@ impl<'a> Glob<'a> {
 
     // TODO: Unix-like globs do not interact well with Windows path prefixes.
     pub fn has_prefix(&self) -> bool {
-        self.literal_prefix()
+        self.non_wildcard_prefix()
             .and_then(|literal| {
                 let path = Path::new(literal.as_ref());
                 path.components().next()
@@ -313,12 +164,12 @@ impl<'a> Glob<'a> {
     }
 
     pub fn read(
-        text: &'a str,
+        text: &'t str,
         directory: impl AsRef<Path>,
         depth: usize,
-    ) -> Result<Read<'a>, GlobError> {
+    ) -> Result<Read<'t>, GlobError> {
         let glob = Glob::parse(text)?;
-        let directory = if let Some(prefix) = glob.directory_prefix() {
+        let directory = if let Some(prefix) = glob.path_prefix() {
             directory.as_ref().join(prefix)
         }
         else {
@@ -343,15 +194,15 @@ impl<'a> Glob<'a> {
         })
     }
 
-    fn literal_prefix(&self) -> Option<&Cow<'a, str>> {
+    fn non_wildcard_prefix(&self) -> Option<&Cow<'t, str>> {
         self.tokens.get(0).and_then(|token| match *token {
             Token::Literal(ref literal) => Some(literal),
             _ => None,
         })
     }
 
-    fn directory_prefix(&self) -> Option<&Path> {
-        self.literal_prefix().and_then(|literal| {
+    fn path_prefix(&self) -> Option<&Path> {
+        self.non_wildcard_prefix().and_then(|literal| {
             let path = Path::new(literal.as_ref());
             if self.tokens.len() > 1 {
                 path.parent()
@@ -376,20 +227,20 @@ impl FromStr for Glob<'static> {
     }
 }
 
-pub struct Read<'a> {
-    glob: Glob<'a>,
-    components: Vec<Glob<'a>>,
+pub struct Read<'t> {
+    glob: Glob<'t>,
+    components: Vec<Glob<'t>>,
     //strip: PathBuf,
     walk: walkdir::IntoIter,
 }
 
-impl<'a> Read<'a> {
-    pub fn glob(&self) -> &Glob<'a> {
+impl<'t> Read<'t> {
+    pub fn glob(&self) -> &Glob<'t> {
         &self.glob
     }
 }
 
-impl<'a> Iterator for Read<'a> {
+impl<'t> Iterator for Read<'t> {
     type Item = Result<PathBuf, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -402,6 +253,17 @@ impl<'a> Iterator for Read<'a> {
         else {
             None
         }
+    }
+}
+
+fn escape(byte: u8) -> String {
+    const ASCII_TERMINATOR: u8 = 0x7F;
+
+    if byte <= ASCII_TERMINATOR {
+        regex::escape(&(byte as char).to_string())
+    }
+    else {
+        format!("\\x{:02x}", byte)
     }
 }
 
