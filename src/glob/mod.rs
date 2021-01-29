@@ -126,32 +126,29 @@ impl<'t> Glob<'t> {
     }
 
     pub fn is_absolute(&self) -> bool {
-        self.non_wildcard_prefix()
-            .map(|literal| {
-                let path = Path::new(literal.as_ref());
-                path.is_absolute()
-            })
+        self.path_prefix()
+            .map(|prefix| prefix.is_absolute())
             .unwrap_or(false)
     }
 
     pub fn has_root(&self) -> bool {
-        self.non_wildcard_prefix()
-            .map(|literal| {
-                let path = Path::new(literal.as_ref());
-                path.has_root()
-            })
+        self.path_prefix()
+            .map(|prefix| prefix.has_root())
             .unwrap_or(false)
     }
 
     // TODO: Unix-like globs do not interact well with Windows path prefixes.
     pub fn has_prefix(&self) -> bool {
-        self.non_wildcard_prefix()
-            .and_then(|literal| {
-                let path = Path::new(literal.as_ref());
-                path.components().next()
-            })
-            .map(|component| matches!(component, Component::Prefix(_)))
-            .unwrap_or(false)
+        if let Some(prefix) = self.path_prefix() {
+            prefix
+                .components()
+                .next()
+                .map(|component| matches!(component, Component::Prefix(_)))
+                .unwrap_or(false)
+        }
+        else {
+            false
+        }
     }
 
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
@@ -164,15 +161,30 @@ impl<'t> Glob<'t> {
     }
 
     pub fn read(self, directory: impl AsRef<Path>, depth: usize) -> Result<Read<'t>, GlobError> {
-        let directory = if let Some(prefix) = self.path_prefix() {
-            directory.as_ref().join(prefix)
+        // The directory tree is traversed from `root`, which may include a path
+        // prefix from the glob pattern. `Read` patterns are only applied to
+        // path components following the `prefix` in `root`.
+        let (prefix, root) = if let Some(prefix) = self.path_prefix() {
+            let root: Cow<'_, Path> = directory.as_ref().join(&prefix).into();
+            if prefix.is_absolute() {
+                // Note that absolute paths replace paths with which they are
+                // joined, so there is no prefix.
+                (PathBuf::new().into(), root)
+            }
+            else {
+                (directory.as_ref().into(), root)
+            }
         }
         else {
-            directory.as_ref().to_path_buf()
+            let root: Cow<'_, Path> = directory.as_ref().into();
+            (root.clone(), root)
         };
+        let regexes = Read::compile(self.tokens.iter())?;
         Ok(Read {
             glob: self,
-            walk: WalkDir::new(directory)
+            regexes,
+            prefix: prefix.into_owned(),
+            walk: WalkDir::new(root)
                 .follow_links(false)
                 .min_depth(1)
                 .max_depth(depth)
@@ -180,18 +192,35 @@ impl<'t> Glob<'t> {
         })
     }
 
-    fn non_wildcard_prefix(&self) -> Option<&Cow<'t, str>> {
-        self.tokens.get(0).and_then(|token| match *token {
-            Token::Literal(ref literal) => Some(literal),
-            _ => None,
-        })
+    // TODO: Copies and allocations could be avoided in cases where zero or one
+    //       tokens form a prefix, but this introduces complexity. Could such an
+    //       optimization be worthwhile?
+    fn non_wildcard_prefix(&self) -> Option<String> {
+        let mut prefix = String::new();
+        for token in self
+            .tokens
+            .iter()
+            .take_while(|token| matches!(token, Token::Literal(_) | Token::NonTreeSeparator))
+        {
+            match *token {
+                Token::Literal(ref literal) => prefix.push_str(literal.as_ref()),
+                Token::NonTreeSeparator => prefix.push_str("/"),
+                _ => {}
+            }
+        }
+        if prefix.is_empty() {
+            None
+        }
+        else {
+            Some(prefix.into())
+        }
     }
 
-    fn path_prefix(&self) -> Option<&Path> {
-        self.non_wildcard_prefix().and_then(|literal| {
-            let path = Path::new(literal.as_ref());
+    fn path_prefix(&self) -> Option<PathBuf> {
+        self.non_wildcard_prefix().and_then(|prefix| {
+            let path = PathBuf::from(prefix);
             if self.tokens.len() > 1 {
-                path.parent()
+                path.parent().map(|parent| parent.to_path_buf())
             }
             else {
                 Some(path)
@@ -210,16 +239,35 @@ impl FromStr for Glob<'static> {
 
 pub struct Read<'t> {
     glob: Glob<'t>,
-    //strip: PathBuf,
+    regexes: Vec<Regex>,
+    prefix: PathBuf,
     walk: walkdir::IntoIter,
 }
 
 impl<'t> Read<'t> {
-    fn compile<T>(tokens: impl IntoIterator<Item = T>) -> Result<Regex, GlobError>
+    fn compile<T>(tokens: impl IntoIterator<Item = T>) -> Result<Vec<Regex>, GlobError>
     where
         T: Borrow<Token<'t>>,
     {
-        todo!()
+        let mut regexes = Vec::new();
+        let mut tokens = tokens.into_iter().peekable();
+        while let Some(token) = tokens.peek().map(|token| token.borrow()) {
+            match token {
+                Token::Wildcard(Wildcard::Tree) => {
+                    regexes.push(Glob::compile(tokens.by_ref().take(1))?);
+                    break; // Stop at tree tokens.
+                }
+                _ => {
+                    regexes.push(Glob::compile(tokens.by_ref().take_while(|token| {
+                        match token.borrow() {
+                            Token::NonTreeSeparator => false,
+                            _ => true,
+                        }
+                    }))?);
+                }
+            }
+        }
+        Ok(regexes)
     }
 
     pub fn glob(&self) -> &Glob<'t> {

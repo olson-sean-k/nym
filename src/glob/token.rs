@@ -45,6 +45,13 @@ impl From<Wildcard> for Token<'static> {
     }
 }
 
+// TODO: Patterns like `/**` do not parse correctly. The initial separator is
+//       considered a part of a tree token. This means that the root is lost,
+//       such that `/**` and `**` are equivalent.
+//
+//       This should be fixed, but note that solutions that introduce invalid
+//       token sequences should be avoided! If possible, arbitrary token
+//       sequences be valid.
 pub fn parse<'t>(text: &'t str) -> Result<Vec<Token<'t>>, GlobError> {
     use nom::bytes::complete as bytes;
     use nom::error::ParseError;
