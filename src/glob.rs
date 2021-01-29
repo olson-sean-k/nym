@@ -3,9 +3,10 @@ use itertools::{Itertools as _, Position};
 use nom::error::ErrorKind;
 use regex::bytes::Regex;
 use std::borrow::Cow;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
+use walkdir::{self, WalkDir};
 
 use crate::PositionExt as _;
 
@@ -16,6 +17,8 @@ use std::ffi::OsStr;
 pub enum GlobError {
     #[error("failed to parse glob")]
     Parse,
+    #[error("failed to read directory tree")]
+    Read(walkdir::Error),
 }
 
 impl<I> From<nom::Err<(I, ErrorKind)>> for GlobError {
@@ -81,6 +84,7 @@ enum Wildcard {
 #[derive(Clone, Debug)]
 enum Token<'a> {
     Literal(Cow<'a, str>),
+    Separator,
     Wildcard(Wildcard),
 }
 
@@ -88,6 +92,7 @@ impl<'a> Token<'a> {
     pub fn into_owned(self) -> Token<'static> {
         match self {
             Token::Literal(literal) => literal.into_owned().into(),
+            Token::Separator => Token::Separator,
             Token::Wildcard(wildcard) => Token::Wildcard(wildcard),
         }
     }
@@ -134,6 +139,25 @@ impl<'a> Glob<'a> {
                     )
                 )
             })
+            .dedup_by(|left, right| {
+                matches!(
+                    (left, right),
+                    (
+                        Token::Wildcard(Wildcard::ZeroOrMore),
+                        Token::Wildcard(Wildcard::ZeroOrMore)
+                    )
+                )
+            })
+            .filter(|token| match &token {
+                Token::Literal(ref literal) => !literal.is_empty(),
+                _ => true,
+            })
+            .coalesce(|left, right| match (&left, &right) {
+                (Token::Literal(ref left), Token::Literal(ref right)) => {
+                    Ok(Token::Literal(format!("{}{}", left, right).into()))
+                }
+                _ => Err((left, right)),
+            })
             .collect();
         let mut pattern = String::new();
         let mut push = |text: &str| pattern.push_str(text);
@@ -151,6 +175,7 @@ impl<'a> Glob<'a> {
                         }
                     }
                 }
+                (_, Token::Separator) => {}
                 (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
                 (_, Token::Wildcard(Wildcard::ZeroOrMore)) => push("([^/]*)"),
                 (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*/))"),
@@ -216,7 +241,7 @@ impl<'a> Glob<'a> {
         where
             E: ParseError<&'i str>,
         {
-            combinator::map(bytes::tag("/"), From::from)(input)
+            combinator::value(Token::Separator, bytes::tag("/"))(input)
         }
 
         fn glob<'i, E>(input: &'i str) -> IResult<&'i str, Glob, E>
@@ -243,38 +268,32 @@ impl<'a> Glob<'a> {
     }
 
     pub fn is_absolute(&self) -> bool {
-        self.with_literal_prefix(|literal| {
-            literal
-                .map(|literal| {
-                    let path = Path::new(literal.as_ref());
-                    path.is_absolute()
-                })
-                .unwrap_or(false)
-        })
+        self.literal_prefix()
+            .map(|literal| {
+                let path = Path::new(literal.as_ref());
+                path.is_absolute()
+            })
+            .unwrap_or(false)
     }
 
     pub fn has_root(&self) -> bool {
-        self.with_literal_prefix(|literal| {
-            literal
-                .map(|literal| {
-                    let path = Path::new(literal.as_ref());
-                    path.has_root()
-                })
-                .unwrap_or(false)
-        })
+        self.literal_prefix()
+            .map(|literal| {
+                let path = Path::new(literal.as_ref());
+                path.has_root()
+            })
+            .unwrap_or(false)
     }
 
     // TODO: Unix-like globs do not interact well with Windows path prefixes.
     pub fn has_prefix(&self) -> bool {
-        self.with_literal_prefix(|literal| {
-            literal
-                .and_then(|literal| {
-                    let path = Path::new(literal.as_ref());
-                    path.components().next()
-                })
-                .map(|component| matches!(component, Component::Prefix(_)))
-                .unwrap_or(false)
-        })
+        self.literal_prefix()
+            .and_then(|literal| {
+                let path = Path::new(literal.as_ref());
+                path.components().next()
+            })
+            .map(|component| matches!(component, Component::Prefix(_)))
+            .unwrap_or(false)
     }
 
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
@@ -286,14 +305,59 @@ impl<'a> Glob<'a> {
         self.regex.captures(path.as_ref())
     }
 
-    fn with_literal_prefix<T, F>(&self, f: F) -> T
-    where
-        F: FnOnce(Option<&Cow<str>>) -> T,
-    {
-        f(self.tokens.get(0).and_then(|token| match *token {
+    pub fn read(
+        text: &'a str,
+        directory: impl AsRef<Path>,
+        depth: usize,
+    ) -> Result<Read<'a>, GlobError> {
+        let glob = Glob::parse(text)?;
+        let directory = if let Some(prefix) = glob.directory_prefix() {
+            directory.as_ref().join(prefix)
+        }
+        else {
+            directory.as_ref().to_path_buf()
+        };
+        let components = Path::new(text)
+            .components()
+            .flat_map(|component| match component {
+                Component::Normal(text) => Glob::parse(text.to_str().unwrap()).ok(),
+                _ => None,
+            })
+            .take_while(|glob| !glob.is_any_tree())
+            .collect();
+        Ok(Read {
+            glob,
+            components,
+            walk: WalkDir::new(directory)
+                .follow_links(false)
+                .min_depth(1)
+                .max_depth(depth)
+                .into_iter(),
+        })
+    }
+
+    fn literal_prefix(&self) -> Option<&Cow<'a, str>> {
+        self.tokens.get(0).and_then(|token| match *token {
             Token::Literal(ref literal) => Some(literal),
             _ => None,
-        }))
+        })
+    }
+
+    fn directory_prefix(&self) -> Option<&Path> {
+        self.literal_prefix().and_then(|literal| {
+            let path = Path::new(literal.as_ref());
+            if self.tokens.len() > 1 {
+                path.parent()
+            }
+            else {
+                Some(path)
+            }
+        })
+    }
+
+    fn is_any_tree(&self) -> bool {
+        self.tokens.len() == 1
+            && matches!(self.tokens.get(0).unwrap(), Token::Wildcard(Wildcard::Tree))
     }
 }
 
@@ -302,6 +366,35 @@ impl FromStr for Glob<'static> {
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         Glob::parse(text).map(|glob| glob.into_owned())
+    }
+}
+
+pub struct Read<'a> {
+    glob: Glob<'a>,
+    components: Vec<Glob<'a>>,
+    //strip: PathBuf,
+    walk: walkdir::IntoIter,
+}
+
+impl<'a> Read<'a> {
+    pub fn glob(&self) -> &Glob<'a> {
+        &self.glob
+    }
+}
+
+impl<'a> Iterator for Read<'a> {
+    type Item = Result<PathBuf, GlobError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(entry) = self.walk.next() {
+            let entry = entry.unwrap(); // TODO: Forward errors.
+            let path = entry.path();
+
+            None // TODO:
+        }
+        else {
+            None
+        }
     }
 }
 
@@ -380,6 +473,7 @@ mod tests {
     #[test]
     fn match_glob_with_tree_tokens() {
         let glob = Glob::parse("a/**/b").unwrap();
+        eprintln!("{}\n{:?}", "a/**/b", glob.tokens);
 
         assert!(glob.is_match(Path::new("a/b")));
         assert!(glob.is_match(Path::new("a/x/b")));
