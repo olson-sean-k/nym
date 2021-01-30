@@ -1,10 +1,11 @@
 mod token;
 
 use bstr::ByteVec;
-use itertools::{Itertools as _, Position};
+use itertools::{EitherOrBoth, Itertools as _, Position};
 use nom::error::ErrorKind;
 use regex::bytes::Regex;
 use std::borrow::{Borrow, Cow};
+use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
@@ -14,7 +15,7 @@ use crate::glob::token::{Token, Wildcard};
 use crate::PositionExt as _;
 
 pub use regex::bytes::Captures;
-use std::ffi::OsStr;
+pub use walkdir::DirEntry;
 
 #[derive(Debug, Error)]
 pub enum GlobError {
@@ -276,17 +277,51 @@ impl<'t> Read<'t> {
 }
 
 impl<'t> Iterator for Read<'t> {
-    type Item = Result<PathBuf, GlobError>;
+    type Item = Result<DirEntry, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(entry) = self.walk.next() {
-            let entry = entry.unwrap(); // TODO: Forward errors.
-            let path = entry.path();
-
-            None // TODO:
-        }
-        else {
-            None
+        'walk: loop {
+            if let Some(entry) = self.walk.next() {
+                let entry = entry.unwrap(); // TODO: Forward errors.
+                let path = entry
+                    .path()
+                    .strip_prefix(&self.prefix)
+                    .expect("path is not in tree");
+                for candidate in path.components().zip_longest(self.regexes.iter()) {
+                    match candidate {
+                        EitherOrBoth::Both(component, regex) => {
+                            // TODO: How should other components be handled?
+                            let bytes = match component {
+                                Component::Normal(text) => text.to_str().unwrap().as_bytes(),
+                                Component::RootDir => b"/",
+                                _ => &[],
+                            };
+                            if regex.is_match(bytes) {
+                                if self.glob.is_match(path) {
+                                    return Some(Ok(entry));
+                                }
+                            }
+                            else {
+                                if entry.file_type().is_dir() {
+                                    self.walk.skip_current_dir();
+                                }
+                                continue 'walk;
+                            }
+                        }
+                        EitherOrBoth::Left(_) => {
+                            if self.glob.is_match(path) {
+                                return Some(Ok(entry));
+                            }
+                        }
+                        EitherOrBoth::Right(_) => {
+                            continue 'walk;
+                        }
+                    }
+                }
+            }
+            else {
+                return None;
+            }
         }
     }
 }
