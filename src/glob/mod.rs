@@ -205,7 +205,7 @@ impl<'t> Glob<'t> {
         {
             match *token {
                 Token::Literal(ref literal) => prefix.push_str(literal.as_ref()),
-                Token::NonTreeSeparator => prefix.push_str("/"),
+                Token::NonTreeSeparator => prefix.push('/'),
                 _ => {}
             }
         }
@@ -213,7 +213,7 @@ impl<'t> Glob<'t> {
             None
         }
         else {
-            Some(prefix.into())
+            Some(prefix)
         }
     }
 
@@ -246,24 +246,30 @@ pub struct Read<'t> {
 }
 
 impl<'t> Read<'t> {
-    fn compile<T>(tokens: impl IntoIterator<Item = T>) -> Result<Vec<Regex>, GlobError>
+    fn compile<I, T>(tokens: I) -> Result<Vec<Regex>, GlobError>
     where
-        T: Borrow<Token<'t>>,
+        I: IntoIterator<Item = T>,
+        I::IntoIter: Clone,
+        T: Borrow<Token<'t>> + Clone,
     {
         let mut regexes = Vec::new();
         let mut tokens = tokens.into_iter().peekable();
         while let Some(token) = tokens.peek().map(|token| token.borrow()) {
             match token {
+                Token::NonTreeSeparator => {
+                    tokens.next();
+                    continue; // Skip separators.
+                }
                 Token::Wildcard(Wildcard::Tree) => {
-                    regexes.push(Glob::compile(tokens.by_ref().take(1))?);
+                    tokens.next();
                     break; // Stop at tree tokens.
                 }
                 _ => {
-                    regexes.push(Glob::compile(tokens.by_ref().take_while(|token| {
-                        match token.borrow() {
-                            Token::NonTreeSeparator => false,
-                            _ => true,
-                        }
+                    regexes.push(Glob::compile(tokens.take_while_ref(|token| {
+                        !matches!(
+                            token.borrow(),
+                            Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree)
+                        )
                     }))?);
                 }
             }
@@ -287,21 +293,24 @@ impl<'t> Iterator for Read<'t> {
                     .path()
                     .strip_prefix(&self.prefix)
                     .expect("path is not in tree");
-                for candidate in path.components().zip_longest(self.regexes.iter()) {
+                for candidate in path
+                    .components()
+                    .filter_map(|component| match component {
+                        Component::Normal(text) => Some(text.to_str().unwrap().as_bytes()),
+                        _ => None,
+                    })
+                    .zip_longest(self.regexes.iter())
+                {
                     match candidate {
                         EitherOrBoth::Both(component, regex) => {
-                            // TODO: How should other components be handled?
-                            let bytes = match component {
-                                Component::Normal(text) => text.to_str().unwrap().as_bytes(),
-                                Component::RootDir => b"/",
-                                _ => &[],
-                            };
-                            if regex.is_match(bytes) {
+                            if regex.is_match(component) {
                                 if self.glob.is_match(path) {
                                     return Some(Ok(entry));
                                 }
                             }
                             else {
+                                // Do not descend into directories that do not
+                                // match the corresponding component regex.
                                 if entry.file_type().is_dir() {
                                     self.walk.skip_current_dir();
                                 }
@@ -342,6 +351,21 @@ mod tests {
     use std::path::Path;
 
     use crate::glob::{BytePath, Glob};
+
+    // ---
+    // TODO: Remove this (very broken) test. This is used for some quick and
+    //       dirty manual testing, but should be removed ASAP.
+    #[test]
+    fn read() {
+        //let glob = Glob::parse("/home/sean/src/nym/src/**/*.rs").unwrap();
+        let glob = Glob::parse("src/**/*.rs").unwrap();
+        eprintln!("GLOB {:?}", glob);
+        for entry in glob.read(".", 255).unwrap() {
+            let entry = entry.unwrap();
+            eprintln!("MATCHED: {:?}", entry.path());
+        }
+    }
+    // ---
 
     #[test]
     fn parse_glob_with_zom_tokens() {
