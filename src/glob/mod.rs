@@ -267,7 +267,6 @@ impl<'t> Read<'t> {
                     continue; // Skip separators.
                 }
                 Token::Wildcard(Wildcard::Tree) => {
-                    tokens.next();
                     break; // Stop at tree tokens.
                 }
                 _ => {
