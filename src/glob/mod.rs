@@ -119,7 +119,7 @@ impl<'t> Glob<'t> {
     }
 
     pub fn parse(text: &'t str) -> Result<Self, GlobError> {
-        let tokens: Vec<_> = token::coalesce(token::parse(text)?).collect();
+        let tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
         let regex = Glob::compile(tokens.iter())?;
         Ok(Glob { tokens, regex })
     }

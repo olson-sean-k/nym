@@ -115,7 +115,7 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
         .map_err(From::from)
 }
 
-pub fn coalesce<'t>(
+pub fn optimize<'t>(
     tokens: impl IntoIterator<Item = Token<'t>>,
 ) -> impl Iterator<Item = Token<'t>> {
     tokens
