@@ -120,7 +120,7 @@ impl<'t> Glob<'t> {
 
     pub fn parse(text: &'t str) -> Result<Self, GlobError> {
         let tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
-        let regex = Glob::compile(tokens.iter())?;
+        let regex = Glob::compile(tokens.iter()).expect("glob compilation failed");
         Ok(Glob { tokens, regex })
     }
 
@@ -167,7 +167,7 @@ impl<'t> Glob<'t> {
         self.regex.captures(path.as_ref())
     }
 
-    pub fn read(self, directory: impl AsRef<Path>, depth: usize) -> Result<Read<'t>, GlobError> {
+    pub fn read(self, directory: impl AsRef<Path>, depth: usize) -> Read<'t> {
         // The directory tree is traversed from `root`, which may include a path
         // prefix from the glob pattern. `Read` patterns are only applied to
         // path components following the `prefix` in `root`.
@@ -186,8 +186,8 @@ impl<'t> Glob<'t> {
             let root: Cow<'_, Path> = directory.as_ref().into();
             (root.clone(), root)
         };
-        let regexes = Read::compile(self.tokens.iter())?;
-        Ok(Read {
+        let regexes = Read::compile(self.tokens.iter()).expect("glob iterator compilation failed");
+        Read {
             glob: self,
             regexes,
             prefix: prefix.into_owned(),
@@ -196,7 +196,7 @@ impl<'t> Glob<'t> {
                 .min_depth(1)
                 .max_depth(depth)
                 .into_iter(),
-        })
+        }
     }
 
     // TODO: Copies and allocations could be avoided in cases where zero or one
@@ -370,7 +370,7 @@ mod tests {
         //let glob = Glob::parse("/home/sean/src/nym/src/**/*.rs").unwrap();
         let glob = Glob::parse("src/**/*.rs").unwrap();
         eprintln!("GLOB {:?}", glob);
-        for entry in glob.read(".", 255).unwrap() {
+        for entry in glob.read(".", 255) {
             let entry = entry.unwrap();
             eprintln!("MATCHED: {:?}", entry.path());
         }
