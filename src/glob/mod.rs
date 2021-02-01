@@ -31,6 +31,12 @@ impl<I> From<nom::Err<(I, ErrorKind)>> for GlobError {
     }
 }
 
+impl From<walkdir::Error> for GlobError {
+    fn from(error: walkdir::Error) -> Self {
+        GlobError::Read(error)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct BytePath<'b> {
     path: Cow<'b, [u8]>,
@@ -288,7 +294,12 @@ impl<'t> Iterator for Read<'t> {
     fn next(&mut self) -> Option<Self::Item> {
         'walk: loop {
             if let Some(entry) = self.walk.next() {
-                let entry = entry.unwrap(); // TODO: Forward errors.
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => {
+                        return Some(Err(error.into()));
+                    }
+                };
                 let path = entry
                     .path()
                     .strip_prefix(&self.prefix)

@@ -52,7 +52,7 @@ impl From<Wildcard> for Token<'static> {
 //       This should be fixed, but note that solutions that introduce invalid
 //       token sequences should be avoided! If possible, arbitrary token
 //       sequences be valid.
-pub fn parse<'t>(text: &'t str) -> Result<Vec<Token<'t>>, GlobError> {
+pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
     use nom::bytes::complete as bytes;
     use nom::error::ParseError;
     use nom::{branch, combinator, multi, sequence, IResult, Parser};
