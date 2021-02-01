@@ -108,10 +108,10 @@ impl<'t> Glob<'t> {
                 (_, Token::NonTreeSeparator) => push(&escape(b'/')),
                 (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
                 (_, Token::Wildcard(Wildcard::ZeroOrMore)) => push("([^/]*)"),
-                (Position::First(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*/))"),
-                (Position::Middle(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*/))"),
-                (Position::Last(()), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|/(.*))"),
-                (Position::Only(()), Token::Wildcard(Wildcard::Tree)) => push("(.*)"),
+                (Position::First(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*/))"),
+                (Position::Middle(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*/))"),
+                (Position::Last(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|/(.*))"),
+                (Position::Only(_), Token::Wildcard(Wildcard::Tree)) => push("(.*)"),
             }
         }
         push("$");
