@@ -1,3 +1,8 @@
+<div align="center">
+    <img alt="Nym" src="https://raw.githubusercontent.com/olson-sean-k/nym/master/doc/nym.svg?sanitize=true" width="320"/>
+</div>
+<br/>
+
 **Nym** is a library and command line tool for manipulating files using
 patterns. It is inspired by and very loosely based upon `mmv`.
 
