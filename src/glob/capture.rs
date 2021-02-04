@@ -8,13 +8,13 @@ pub enum Selector<'t> {
 #[derive(Debug)]
 enum MaybeOwnedCaptures<'t> {
     Borrowed(bytes::Captures<'t>),
-    Owned(ClonedCaptures),
+    Owned(OwnedCaptures),
 }
 
 impl<'t> MaybeOwnedCaptures<'t> {
     fn into_owned(self) -> MaybeOwnedCaptures<'static> {
         match self {
-            MaybeOwnedCaptures::Borrowed(borrowed) => ClonedCaptures::from(borrowed).into(),
+            MaybeOwnedCaptures::Borrowed(borrowed) => OwnedCaptures::from(borrowed).into(),
             MaybeOwnedCaptures::Owned(owned) => owned.into(),
         }
     }
@@ -26,19 +26,19 @@ impl<'t> From<bytes::Captures<'t>> for MaybeOwnedCaptures<'t> {
     }
 }
 
-impl From<ClonedCaptures> for MaybeOwnedCaptures<'static> {
-    fn from(captures: ClonedCaptures) -> Self {
+impl From<OwnedCaptures> for MaybeOwnedCaptures<'static> {
+    fn from(captures: OwnedCaptures) -> Self {
         MaybeOwnedCaptures::Owned(captures)
     }
 }
 
-#[derive(Debug)]
-struct ClonedCaptures {
+#[derive(Clone, Debug)]
+struct OwnedCaptures {
     matched: Vec<u8>,
     ranges: Vec<Option<(usize, usize)>>,
 }
 
-impl ClonedCaptures {
+impl OwnedCaptures {
     pub fn get(&self, selector: Selector<'_>) -> Option<&[u8]> {
         match selector {
             Selector::ByIndex(index) => {
@@ -57,7 +57,7 @@ impl ClonedCaptures {
     }
 }
 
-impl<'t> From<bytes::Captures<'t>> for ClonedCaptures {
+impl<'t> From<bytes::Captures<'t>> for OwnedCaptures {
     fn from(captures: bytes::Captures<'t>) -> Self {
         let matched = captures.get(0).unwrap().as_bytes().into();
         let ranges = captures
@@ -65,7 +65,7 @@ impl<'t> From<bytes::Captures<'t>> for ClonedCaptures {
             .skip(1)
             .map(|capture| capture.map(|capture| (capture.start(), capture.end())))
             .collect();
-        ClonedCaptures { matched, ranges }
+        OwnedCaptures { matched, ranges }
     }
 }
 
@@ -107,8 +107,8 @@ impl<'t> From<bytes::Captures<'t>> for Captures<'t> {
     }
 }
 
-impl From<ClonedCaptures> for Captures<'static> {
-    fn from(captures: ClonedCaptures) -> Self {
+impl From<OwnedCaptures> for Captures<'static> {
+    fn from(captures: OwnedCaptures) -> Self {
         Captures {
             inner: captures.into(),
         }

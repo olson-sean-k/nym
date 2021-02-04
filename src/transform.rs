@@ -57,11 +57,12 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
     {
         let mut manifest = Manifest::default();
         for entry in self.from.read(directory.as_ref(), depth) {
-            let (source, captures) = entry.map_err(TransformError::ReadTree)?;
+            let entry = entry.map_err(TransformError::ReadTree)?;
+            let source = entry.path();
             let mut destination = directory.as_ref().to_path_buf();
             destination.push(
                 self.to
-                    .resolve(&source, &captures)
+                    .resolve(&source, entry.captures())
                     .map_err(TransformError::PatternResolution)?,
             );
             let (source, destination) = self.try_apply_policy(source, destination)?;

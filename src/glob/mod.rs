@@ -8,15 +8,14 @@ use os_str_bytes::OsStrBytes as _;
 use regex::bytes::Regex;
 use std::borrow::{Borrow, Cow};
 use std::ffi::OsStr;
+use std::fs::FileType;
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
-use walkdir::{self, WalkDir};
+use walkdir::{self, DirEntry, WalkDir};
 
 use crate::glob::token::{Token, Wildcard};
 use crate::PositionExt as _;
-
-pub use walkdir::DirEntry;
 
 pub use crate::glob::capture::{Captures, Selector};
 
@@ -98,6 +97,34 @@ impl<'b> BytePath<'b> {
 impl<'b> AsRef<[u8]> for BytePath<'b> {
     fn as_ref(&self) -> &[u8] {
         self.path.as_ref()
+    }
+}
+
+#[derive(Debug)]
+pub struct Entry {
+    inner: DirEntry,
+    captures: Captures<'static>,
+}
+
+impl Entry {
+    pub fn into_path(self) -> PathBuf {
+        self.inner.into_path()
+    }
+
+    pub fn path(&self) -> &Path {
+        self.inner.path()
+    }
+
+    pub fn file_type(&self) -> FileType {
+        self.inner.file_type()
+    }
+
+    pub fn depth(&self) -> usize {
+        self.inner.depth()
+    }
+
+    pub fn captures(&self) -> &Captures<'static> {
+        &self.captures
     }
 }
 
@@ -301,7 +328,7 @@ impl<'t> Read<'t> {
 }
 
 impl<'t> Iterator for Read<'t> {
-    type Item = Result<(DirEntry, Captures<'static>), GlobError>;
+    type Item = Result<Entry, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         'walk: while let Some(entry) = self.walk.next() {
@@ -329,7 +356,10 @@ impl<'t> Iterator for Read<'t> {
                             let bytes = BytePath::from_path(path);
                             if let Some(captures) = self.glob.captures(&bytes) {
                                 let captures = captures.into_owned();
-                                return Some(Ok((entry, captures)));
+                                return Some(Ok(Entry {
+                                    inner: entry,
+                                    captures,
+                                }));
                             }
                         }
                         else {
@@ -345,7 +375,10 @@ impl<'t> Iterator for Read<'t> {
                         let bytes = BytePath::from_path(path);
                         if let Some(captures) = self.glob.captures(&bytes) {
                             let captures = captures.into_owned();
-                            return Some(Ok((entry, captures)));
+                            return Some(Ok(Entry {
+                                inner: entry,
+                                captures,
+                            }));
                         }
                     }
                     EitherOrBoth::Right(_) => {

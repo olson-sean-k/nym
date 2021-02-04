@@ -1,7 +1,7 @@
 use itertools::Itertools;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::glob::{Captures, Glob, GlobError};
+use crate::glob::{Entry, Glob, GlobError};
 
 #[derive(Clone, Debug)]
 pub struct FromPattern<'t> {
@@ -13,13 +13,13 @@ impl<'t> FromPattern<'t> {
         &self,
         directory: impl AsRef<Path>,
         depth: usize,
-    ) -> impl '_ + Iterator<Item = Result<(PathBuf, Captures<'static>), GlobError>> {
+    ) -> impl '_ + Iterator<Item = Result<Entry, GlobError>> {
         self.glob
             .clone()
             .read(directory, depth)
-            .filter_map_ok(|(entry, captures)| {
+            .filter_map_ok(|entry| {
                 if entry.file_type().is_file() {
-                    Some((entry.into_path(), captures))
+                    Some(entry)
                 }
                 else {
                     None
