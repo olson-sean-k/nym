@@ -417,7 +417,7 @@ mod tests {
         let glob = Glob::parse("src/**/*.rs").unwrap();
         eprintln!("GLOB {:?}", glob);
         for entry in glob.read(".", 255) {
-            let (entry, _) = entry.unwrap();
+            let entry = entry.unwrap();
             eprintln!("MATCHED: {:?}", entry.path());
         }
     }
