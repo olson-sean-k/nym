@@ -1,8 +1,10 @@
+mod capture;
 mod token;
 
 use bstr::ByteVec;
 use itertools::{EitherOrBoth, Itertools as _, Position};
 use nom::error::ErrorKind;
+use os_str_bytes::OsStrBytes as _;
 use regex::bytes::Regex;
 use std::borrow::{Borrow, Cow};
 use std::ffi::OsStr;
@@ -14,8 +16,12 @@ use walkdir::{self, WalkDir};
 use crate::glob::token::{Token, Wildcard};
 use crate::PositionExt as _;
 
-pub use regex::bytes::Captures;
 pub use walkdir::DirEntry;
+
+pub use crate::glob::capture::{Captures, Selector};
+
+pub use Selector::ByIndex;
+pub use Selector::ByName;
 
 #[derive(Debug, Error)]
 pub enum GlobError {
@@ -75,6 +81,17 @@ impl<'b> BytePath<'b> {
         P: AsRef<Path> + ?Sized,
     {
         Self::from_bytes(Vec::from_path_lossy(path.as_ref()))
+    }
+
+    pub fn into_owned(self) -> BytePath<'static> {
+        let BytePath { path } = self;
+        BytePath {
+            path: path.into_owned().into(),
+        }
+    }
+
+    pub fn path(&self) -> Option<Cow<Path>> {
+        Path::from_bytes(self.path.as_ref()).ok()
     }
 }
 
@@ -164,7 +181,7 @@ impl<'t> Glob<'t> {
     }
 
     pub fn captures<'p>(&self, path: &'p BytePath<'_>) -> Option<Captures<'p>> {
-        self.regex.captures(path.as_ref())
+        self.regex.captures(path.as_ref()).map(From::from)
     }
 
     pub fn read(self, directory: impl AsRef<Path>, depth: usize) -> Read<'t> {
@@ -281,67 +298,63 @@ impl<'t> Read<'t> {
         }
         Ok(regexes)
     }
-
-    pub fn glob(&self) -> &Glob<'t> {
-        &self.glob
-    }
 }
 
 impl<'t> Iterator for Read<'t> {
-    type Item = Result<DirEntry, GlobError>;
+    type Item = Result<(DirEntry, Captures<'static>), GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        'walk: loop {
-            if let Some(entry) = self.walk.next() {
-                let entry = match entry {
-                    Ok(entry) => entry,
-                    Err(error) => {
-                        return Some(Err(error.into()));
-                    }
-                };
-                let path = entry
-                    .path()
-                    .strip_prefix(&self.prefix)
-                    .expect("path is not in tree");
-                for candidate in path
-                    .components()
-                    .filter_map(|component| match component {
-                        Component::Normal(text) => Some(text.to_str().unwrap().as_bytes()),
-                        _ => None,
-                    })
-                    .zip_longest(self.regexes.iter())
-                {
-                    match candidate {
-                        EitherOrBoth::Both(component, regex) => {
-                            if regex.is_match(component) {
-                                if self.glob.is_match(path) {
-                                    return Some(Ok(entry));
-                                }
-                            }
-                            else {
-                                // Do not descend into directories that do not
-                                // match the corresponding component regex.
-                                if entry.file_type().is_dir() {
-                                    self.walk.skip_current_dir();
-                                }
-                                continue 'walk;
+        'walk: while let Some(entry) = self.walk.next() {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    return Some(Err(error.into()));
+                }
+            };
+            let path = entry
+                .path()
+                .strip_prefix(&self.prefix)
+                .expect("path is not in tree");
+            for candidate in path
+                .components()
+                .filter_map(|component| match component {
+                    Component::Normal(text) => Some(text.to_str().unwrap().as_bytes()),
+                    _ => None,
+                })
+                .zip_longest(self.regexes.iter())
+            {
+                match candidate {
+                    EitherOrBoth::Both(component, regex) => {
+                        if regex.is_match(component) {
+                            let bytes = BytePath::from_path(path);
+                            if let Some(captures) = self.glob.captures(&bytes) {
+                                let captures = captures.into_owned();
+                                return Some(Ok((entry, captures)));
                             }
                         }
-                        EitherOrBoth::Left(_) => {
-                            if self.glob.is_match(path) {
-                                return Some(Ok(entry));
+                        else {
+                            // Do not descend into directories that do not
+                            // match the corresponding component regex.
+                            if entry.file_type().is_dir() {
+                                self.walk.skip_current_dir();
                             }
-                        }
-                        EitherOrBoth::Right(_) => {
                             continue 'walk;
                         }
                     }
+                    EitherOrBoth::Left(_) => {
+                        let bytes = BytePath::from_path(path);
+                        if let Some(captures) = self.glob.captures(&bytes) {
+                            let captures = captures.into_owned();
+                            return Some(Ok((entry, captures)));
+                        }
+                    }
+                    EitherOrBoth::Right(_) => {
+                        continue 'walk;
+                    }
                 }
             }
-            else {
-                return None;
-            }
         }
+        None
     }
 }
 
@@ -360,7 +373,7 @@ fn escape(byte: u8) -> String {
 mod tests {
     use std::path::Path;
 
-    use crate::glob::{BytePath, Glob};
+    use crate::glob::{ByIndex, BytePath, Glob};
 
     // ---
     // TODO: Remove this (very broken) test. This is used for some quick and
@@ -371,7 +384,7 @@ mod tests {
         let glob = Glob::parse("src/**/*.rs").unwrap();
         eprintln!("GLOB {:?}", glob);
         for entry in glob.read(".", 255) {
-            let entry = entry.unwrap();
+            let (entry, _) = entry.unwrap();
             eprintln!("MATCHED: {:?}", entry.path());
         }
     }
@@ -458,9 +471,8 @@ mod tests {
             b"x/y/z/",
             glob.captures(&BytePath::from_path(Path::new("a/x/y/z/b")))
                 .unwrap()
-                .get(1)
+                .get(ByIndex(1))
                 .unwrap()
-                .as_bytes()
         );
     }
 
@@ -474,7 +486,7 @@ mod tests {
 
         let path = BytePath::from_path(Path::new("a/file.ext"));
         let captures = glob.captures(&path).unwrap();
-        assert_eq!(b"a/", captures.get(1).unwrap().as_bytes());
-        assert_eq!(b"file", captures.get(2).unwrap().as_bytes());
+        assert_eq!(b"a/", captures.get(ByIndex(1)).unwrap());
+        assert_eq!(b"file", captures.get(ByIndex(2)).unwrap());
     }
 }

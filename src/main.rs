@@ -2,7 +2,6 @@ mod ui;
 
 use anyhow::Error;
 use console::Term;
-use regex::bytes::Regex;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -32,9 +31,6 @@ struct Program {
     /// is no traversal into directories).
     #[structopt(long = "depth", default_value = "255")]
     depth: usize,
-    /// Use regular expressions (instead of globs) for from-patterns.
-    #[structopt(long = "regex", short = "x")]
-    regex: bool,
     /// Perform operations without interactive prompts and ignoring warnings.
     #[structopt(long = "force", short = "f")]
     force: bool,
@@ -58,12 +54,12 @@ impl Program {
         match self.command {
             Command::Append { .. } => todo!("append"),
             Command::Copy { ref transform, .. } => {
-                let (from, to) = transform.parse(self.regex)?;
+                let (from, to) = transform.parse()?;
                 self.read_and_write::<Copy>(environment, from, to)?;
             }
             Command::Link { .. } => todo!("link"),
             Command::Move { ref transform, .. } => {
-                let (from, to) = transform.parse(self.regex)?;
+                let (from, to) = transform.parse()?;
                 self.read_and_write::<Move>(environment, from, to)?;
             }
         }
@@ -156,13 +152,8 @@ struct UnparsedTransform {
 }
 
 impl UnparsedTransform {
-    fn parse(&self, is_regex: bool) -> Result<(FromPattern<'_>, ToPattern<'_>), Error> {
-        let from = if is_regex {
-            Regex::new(&self.from)?.into()
-        }
-        else {
-            Glob::parse(&self.from)?.into()
-        };
+    fn parse(&self) -> Result<(FromPattern<'_>, ToPattern<'_>), Error> {
+        let from = Glob::parse(&self.from)?.into();
         let to = ToPattern::parse(&self.to)?;
         Ok((from, to))
     }

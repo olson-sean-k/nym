@@ -6,11 +6,8 @@ use std::num::ParseIntError;
 use std::path::Path;
 use std::str::{self, FromStr};
 
-use crate::pattern::from::{Captures, Selector};
+use crate::glob::{ByIndex, ByName, Captures};
 use crate::pattern::PatternError;
-
-use Selector::ByIndex;
-use Selector::ByName;
 
 #[derive(Clone, Debug)]
 enum Identifier<'a> {

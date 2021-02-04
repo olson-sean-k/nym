@@ -29,10 +29,9 @@ to-pattern.
 
 ## From-Patterns
 
-From-patterns match source files to actuate. By default, these patterns use
-Unix-like globs. Globs must use `/` as a path separator. Separators are
-normalized across platforms; glob patterns can match paths on Windows, for
-example.
+From-patterns match source files to actuate using Unix-like globs. Globs must
+use `/` as a path separator. Separators are normalized across platforms; glob
+patterns can match paths on Windows, for example.
 
 Globs resemble literal paths, but support three special tokens: the tree token
 `**`, the zero-or-more token `*`, and the exactly-one token `?`.

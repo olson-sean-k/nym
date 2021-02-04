@@ -1,16 +1,16 @@
 use faccess::PathExt as _;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use walkdir::WalkDir;
 
 use crate::environment::Environment;
+use crate::glob::GlobError;
 use crate::manifest::{Manifest, ManifestError, Routing};
-use crate::pattern::{Candidate, FromPattern, PatternError, ToPattern};
+use crate::pattern::{FromPattern, PatternError, ToPattern};
 
 #[derive(Debug, Error)]
 pub enum TransformError {
     #[error("failed to traverse directory tree: {0}")]
-    ReadTree(walkdir::Error),
+    ReadTree(GlobError),
     #[error("failed to resolve to-pattern: {0}")]
     PatternResolution(PatternError),
     #[error("failed to insert route: {0}")]
@@ -56,34 +56,20 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
         M: Routing,
     {
         let mut manifest = Manifest::default();
-        // TODO: This is inefficient, since glob from-patterns determine if
-        //       recursion is necessary or should continue when a particular
-        //       sub-tree is reached. Consider emitting an iterator that
-        //       traverses the directory tree from `FromPattern`.
-        for entry in WalkDir::new(directory.as_ref())
-            .follow_links(false)
-            .min_depth(1)
-            .max_depth(depth)
-        {
-            let entry = entry.map_err(TransformError::ReadTree)?;
-            if entry.file_type().is_file() {
-                let source = entry.path();
-                let candidate = Candidate::tree(directory.as_ref(), source);
-                if let Some(captures) = self.from.captures(&candidate) {
-                    let mut destination = candidate.destination().to_path_buf();
-                    destination.push(
-                        self.to
-                            .resolve(source, &captures)
-                            .map_err(TransformError::PatternResolution)?,
-                    );
-                    let (source, destination) = self.try_apply_policy(source, destination)?;
-                    let source = normalize(source);
-                    let destination = normalize(destination);
-                    manifest
-                        .insert(source, destination)
-                        .map_err(TransformError::Route)?;
-                }
-            }
+        for entry in self.from.read(directory.as_ref(), depth) {
+            let (source, captures) = entry.map_err(TransformError::ReadTree)?;
+            let mut destination = directory.as_ref().to_path_buf();
+            destination.push(
+                self.to
+                    .resolve(&source, &captures)
+                    .map_err(TransformError::PatternResolution)?,
+            );
+            let (source, destination) = self.try_apply_policy(source, destination)?;
+            let source = normalize(source);
+            let destination = normalize(destination);
+            manifest
+                .insert(source, destination)
+                .map_err(TransformError::Route)?;
         }
         Ok(manifest)
     }
