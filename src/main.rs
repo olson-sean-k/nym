@@ -55,18 +55,18 @@ impl Program {
             Command::Append { .. } => todo!("append"),
             Command::Copy { ref transform, .. } => {
                 let (from, to) = transform.parse()?;
-                self.read_and_write::<Copy>(environment, from, to)?;
+                self.actuate::<Copy>(environment, from, to)?;
             }
             Command::Link { .. } => todo!("link"),
             Command::Move { ref transform, .. } => {
                 let (from, to) = transform.parse()?;
-                self.read_and_write::<Move>(environment, from, to)?;
+                self.actuate::<Move>(environment, from, to)?;
             }
         }
         Ok(())
     }
 
-    fn read_and_write<A>(
+    fn actuate<A>(
         &self,
         environment: Environment,
         from: FromPattern<'_>,

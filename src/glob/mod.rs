@@ -211,7 +211,7 @@ impl<'t> Glob<'t> {
         self.regex.captures(path.as_ref()).map(From::from)
     }
 
-    pub fn read(self, directory: impl AsRef<Path>, depth: usize) -> Read<'t> {
+    pub fn read(&self, directory: impl AsRef<Path>, depth: usize) -> Read<'_, 't> {
         // The directory tree is traversed from `root`, which may include a path
         // prefix from the glob pattern. `Read` patterns are only applied to
         // path components following the `prefix` in `root`.
@@ -230,7 +230,7 @@ impl<'t> Glob<'t> {
             let root: Cow<'_, Path> = directory.as_ref().into();
             (root.clone(), root)
         };
-        let regexes = Read::compile(self.tokens.iter()).expect("glob iterator compilation failed");
+        let regexes = Read::compile(self.tokens.iter()).expect("glob compilation failed");
         Read {
             glob: self,
             regexes,
@@ -288,14 +288,14 @@ impl FromStr for Glob<'static> {
     }
 }
 
-pub struct Read<'t> {
-    glob: Glob<'t>,
+pub struct Read<'g, 't> {
+    glob: &'g Glob<'t>,
     regexes: Vec<Regex>,
     prefix: PathBuf,
     walk: walkdir::IntoIter,
 }
 
-impl<'t> Read<'t> {
+impl<'g, 't> Read<'g, 't> {
     fn compile<I, T>(tokens: I) -> Result<Vec<Regex>, GlobError>
     where
         I: IntoIterator<Item = T>,
@@ -327,7 +327,7 @@ impl<'t> Read<'t> {
     }
 }
 
-impl<'t> Iterator for Read<'t> {
+impl<'g, 't> Iterator for Read<'g, 't> {
     type Item = Result<Entry, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {

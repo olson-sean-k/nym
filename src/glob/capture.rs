@@ -18,6 +18,13 @@ impl<'t> MaybeOwnedCaptures<'t> {
             MaybeOwnedCaptures::Owned(owned) => owned.into(),
         }
     }
+
+    fn to_owned(&self) -> MaybeOwnedCaptures<'static> {
+        match self {
+            MaybeOwnedCaptures::Borrowed(ref borrowed) => OwnedCaptures::from(borrowed).into(),
+            MaybeOwnedCaptures::Owned(ref owned) => owned.clone().into(),
+        }
+    }
 }
 
 impl<'t> From<bytes::Captures<'t>> for MaybeOwnedCaptures<'t> {
@@ -52,13 +59,19 @@ impl OwnedCaptures {
                         .flatten()
                 }
             }
-            Selector::ByName(_) => todo!(),
+            Selector::ByName(_) => todo!("by name"),
         }
     }
 }
 
 impl<'t> From<bytes::Captures<'t>> for OwnedCaptures {
     fn from(captures: bytes::Captures<'t>) -> Self {
+        From::from(&captures)
+    }
+}
+
+impl<'c, 't> From<&'c bytes::Captures<'t>> for OwnedCaptures {
+    fn from(captures: &'c bytes::Captures<'t>) -> Self {
         let matched = captures.get(0).unwrap().as_bytes().into();
         let ranges = captures
             .iter()
@@ -79,6 +92,12 @@ impl<'t> Captures<'t> {
         let Captures { inner } = self;
         Captures {
             inner: inner.into_owned(),
+        }
+    }
+
+    pub fn to_owned(&self) -> Captures<'static> {
+        Captures {
+            inner: self.inner.to_owned(),
         }
     }
 
