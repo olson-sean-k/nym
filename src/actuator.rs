@@ -43,6 +43,7 @@ pub trait Operation {
         P: AsRef<Path>;
 }
 
+// TODO: How useful is appending? Perhaps this need not be supported at all.
 pub enum Append {}
 
 pub enum Copy {}

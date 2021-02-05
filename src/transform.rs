@@ -56,6 +56,19 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
     where
         M: Routing,
     {
+        #[cfg(windows)]
+        fn normalize(path: impl Into<PathBuf>) -> PathBuf {
+            use path_slash::PathBufExt as _;
+
+            PathBuf::from_slash_lossy(path.into())
+        }
+
+        #[cfg(not(windows))]
+        #[inline(always)]
+        fn normalize(path: impl Into<PathBuf>) -> PathBuf {
+            path.into()
+        }
+
         let mut manifest = Manifest::default();
         for entry in self.from.read(directory.as_ref(), depth) {
             let entry = entry.map_err(TransformError::Read)?;
@@ -66,11 +79,9 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
                     .resolve(&source, entry.captures())
                     .map_err(TransformError::PatternResolution)?,
             );
-            let (source, destination) = self.try_apply_policy(source, destination)?;
-            let source = normalize(source);
-            let destination = normalize(destination);
+            self.verify_route_policy(source, &destination)?;
             manifest
-                .insert(source, destination)
+                .insert(normalize(source), normalize(destination))
                 .map_err(TransformError::RouteInsertion)?;
         }
         Ok(manifest)
@@ -78,28 +89,28 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
 
     // TODO: Are write permissions checked properly here? Parent directories are
     //       not queried directly.
-    fn try_apply_policy(
+    fn verify_route_policy(
         &self,
-        source: impl Into<PathBuf>,
-        destination: impl Into<PathBuf>,
-    ) -> Result<(PathBuf, PathBuf), TransformError> {
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<(), TransformError> {
         let policy = self.environment.policy();
-        let source = source.into();
-        let destination = destination.into();
+        let source = source.as_ref();
+        let destination = destination.as_ref();
         if !source.readable() {
-            return Err(TransformError::SourceNotReadable(source));
+            return Err(TransformError::SourceNotReadable(source.into()));
         }
         if let Ok(metadata) = destination.metadata() {
             if policy.overwrite {
                 if metadata.is_dir() {
-                    return Err(TransformError::DestinationNotAFile(destination));
+                    return Err(TransformError::DestinationNotAFile(destination.into()));
                 }
                 else if !destination.writable() {
-                    return Err(TransformError::DestinationNotWritable(destination));
+                    return Err(TransformError::DestinationNotWritable(destination.into()));
                 }
             }
             else {
-                return Err(TransformError::DestinationAlreadyExists(destination));
+                return Err(TransformError::DestinationAlreadyExists(destination.into()));
             }
         }
         else {
@@ -112,31 +123,18 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
                     .find(|path| path.exists())
                     .expect("destination path has no existing ancestor");
                 if !parent.writable() {
-                    return Err(TransformError::DestinationNotWritable(destination));
+                    return Err(TransformError::DestinationNotWritable(destination.into()));
                 }
             }
             else {
                 if !parent.exists() {
-                    return Err(TransformError::DestinationOrphaned(destination));
+                    return Err(TransformError::DestinationOrphaned(destination.into()));
                 }
                 if !parent.writable() {
-                    return Err(TransformError::DestinationNotWritable(destination));
+                    return Err(TransformError::DestinationNotWritable(destination.into()));
                 }
             }
         }
-        Ok((source, destination))
+        Ok(())
     }
-}
-
-#[cfg(windows)]
-fn normalize(path: PathBuf) -> PathBuf {
-    use path_slash::PathBufExt as _;
-
-    PathBuf::from_slash_lossy(path)
-}
-
-#[cfg(not(windows))]
-#[inline(always)]
-fn normalize(path: PathBuf) -> PathBuf {
-    path
 }
