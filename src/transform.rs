@@ -8,13 +8,14 @@ use crate::manifest::{Manifest, ManifestError, Routing};
 use crate::pattern::{FromPattern, PatternError, ToPattern};
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum TransformError {
     #[error("failed to traverse directory tree: {0}")]
-    ReadTree(GlobError),
+    Read(GlobError),
     #[error("failed to resolve to-pattern: {0}")]
     PatternResolution(PatternError),
     #[error("failed to insert route: {0}")]
-    Route(ManifestError),
+    RouteInsertion(ManifestError),
     #[error("destination is a directory: `{0}`")]
     DestinationNotAFile(PathBuf),
     #[error("destination file already exists: `{0}`")]
@@ -57,7 +58,7 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
     {
         let mut manifest = Manifest::default();
         for entry in self.from.read(directory.as_ref(), depth) {
-            let entry = entry.map_err(TransformError::ReadTree)?;
+            let entry = entry.map_err(TransformError::Read)?;
             let source = entry.path();
             let mut destination = directory.as_ref().to_path_buf();
             destination.push(
@@ -70,7 +71,7 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
             let destination = normalize(destination);
             manifest
                 .insert(source, destination)
-                .map_err(TransformError::Route)?;
+                .map_err(TransformError::RouteInsertion)?;
         }
         Ok(manifest)
     }

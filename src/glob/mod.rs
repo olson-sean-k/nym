@@ -23,10 +23,11 @@ pub use Selector::ByIndex;
 pub use Selector::ByName;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum GlobError {
     #[error("failed to parse glob")]
     Parse,
-    #[error("failed to read directory tree")]
+    #[error("failed to read directory tree: {0}")]
     Read(walkdir::Error),
 }
 

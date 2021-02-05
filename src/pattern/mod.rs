@@ -10,6 +10,7 @@ pub use crate::pattern::from::FromPattern;
 pub use crate::pattern::to::ToPattern;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PatternError {
     #[error("capture not found in from-pattern")]
     CaptureNotFound,
@@ -18,7 +19,7 @@ pub enum PatternError {
     #[error("failed to encode capture in to-pattern: {0}")]
     Encoding(Utf8Error),
     #[error("failed to read property in to-pattern: {0}")]
-    ReadProperty(io::Error),
+    Property(io::Error),
 }
 
 impl<I> From<nom::Err<(I, ErrorKind)>> for PatternError {

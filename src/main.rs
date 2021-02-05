@@ -84,7 +84,7 @@ impl Program {
             ui::print_warning(&terminal, DISCLAIMER)?;
         }
         if self.force
-            || ui::confirmation(
+            || ui::confirm(
                 &terminal,
                 format!(
                     "Ready to {} into {} files. Continue?",

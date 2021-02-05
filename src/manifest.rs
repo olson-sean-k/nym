@@ -7,6 +7,7 @@ use thiserror::Error;
 type SourceGroup<P> = SmallVec<[P; 1]>;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ManifestError {
     #[error("detected collision in route destination path: `{0}`")]
     PathCollision(PathBuf),

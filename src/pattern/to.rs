@@ -320,14 +320,14 @@ impl<'a> ToPattern<'a> {
                     Property::B3Sum => {
                         let hash = blake3::hash(
                             fs::read(source.as_ref())
-                                .map_err(PatternError::ReadProperty)?
+                                .map_err(PatternError::Property)?
                                 .as_ref(),
                         );
                         output.push_str(hash.to_hex().as_str());
                     }
                     Property::Timestamp => {
                         let metadata =
-                            fs::metadata(source.as_ref()).map_err(PatternError::ReadProperty)?;
+                            fs::metadata(source.as_ref()).map_err(PatternError::Property)?;
                         let time = FileTime::from_last_modification_time(&metadata);
                         output.push_str(&format!("{}", time));
                     }

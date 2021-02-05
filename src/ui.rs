@@ -163,7 +163,7 @@ pub fn print_warning(terminal: &Term, warning: impl AsRef<str>) -> io::Result<()
     Ok(())
 }
 
-pub fn confirmation(terminal: &Term, prompt: impl AsRef<str>) -> io::Result<bool> {
+pub fn confirm(terminal: &Term, prompt: impl AsRef<str>) -> io::Result<bool> {
     Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(prompt.as_ref())
         .default(false)
