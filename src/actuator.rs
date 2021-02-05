@@ -1,3 +1,4 @@
+use itertools::Itertools as _;
 use std::fs;
 use std::io::{self, Error, ErrorKind};
 use std::path::Path;
@@ -55,17 +56,52 @@ impl Operation for Copy {
     where
         P: AsRef<Path>,
     {
-        let source = route
-            .sources()
-            .next()
-            .ok_or_else(|| Error::new(ErrorKind::Other, "no source paths"))?;
-        fs::copy(source, route.destination()).map(|_| ())
+        fs::copy(exactly_one_source(&route)?, route.destination()).map(|_| ())
     }
 }
 
 pub enum HardLink {}
 
+impl Operation for HardLink {
+    type Routing = Bijective;
+
+    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        fs::hard_link(exactly_one_source(&route)?, route.destination())
+    }
+}
+
 pub enum SoftLink {}
+
+#[cfg(unix)]
+impl Operation for SoftLink {
+    type Routing = Bijective;
+
+    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        use std::os::unix;
+
+        unix::fs::symlink(exactly_one_source(&route)?, route.destination())
+    }
+}
+
+#[cfg(windows)]
+impl Operation for SoftLink {
+    type Routing = Bijective;
+
+    fn write<P>(route: Route<Self::Routing, P>) -> io::Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        use std::os::windows;
+
+        windows::fs::symlink_file(exactly_one_source(&route)?, route.destination())
+    }
+}
 
 pub enum Move {}
 
@@ -76,10 +112,17 @@ impl Operation for Move {
     where
         P: AsRef<Path>,
     {
-        let source = route
-            .sources()
-            .next()
-            .ok_or_else(|| Error::new(ErrorKind::Other, "no source paths"))?;
-        fs::rename(source, route.destination()).map(|_| ())
+        fs::rename(exactly_one_source(&route)?, route.destination()).map(|_| ())
     }
+}
+
+fn exactly_one_source<R, P>(route: &Route<R, P>) -> io::Result<&P>
+where
+    R: Routing,
+    P: AsRef<Path>,
+{
+    route
+        .sources()
+        .exactly_one()
+        .map_err(|_| Error::new(ErrorKind::Other, "no source paths"))
 }

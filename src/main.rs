@@ -5,7 +5,7 @@ use console::Term;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use nym::actuator::{Copy, Move, Operation};
+use nym::actuator::{Copy, HardLink, Move, Operation, SoftLink};
 use nym::environment::{Environment, Policy};
 use nym::glob::Glob;
 use nym::manifest::Manifest;
@@ -57,7 +57,16 @@ impl Program {
                 let (from, to) = transform.parse()?;
                 self.actuate::<Copy>(environment, from, to)?;
             }
-            Command::Link { .. } => todo!("link"),
+            Command::Link { ref link, .. } => match link {
+                Link::Hard { ref transform, .. } => {
+                    let (from, to) = transform.parse()?;
+                    self.actuate::<HardLink>(environment, from, to)?;
+                }
+                Link::Soft { ref transform, .. } => {
+                    let (from, to) = transform.parse()?;
+                    self.actuate::<SoftLink>(environment, from, to)?;
+                }
+            },
             Command::Move { ref transform, .. } => {
                 let (from, to) = transform.parse()?;
                 self.actuate::<Move>(environment, from, to)?;

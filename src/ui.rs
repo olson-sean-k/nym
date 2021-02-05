@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 use std::cmp;
 use std::io;
 
-use nym::actuator::{Copy, Move};
+use nym::actuator::{Copy, HardLink, Move, SoftLink};
 use nym::manifest::{Manifest, Routing};
 
 const MIN_TERMINAL_WIDTH: usize = 16;
@@ -42,8 +42,16 @@ impl Label for Copy {
     const LABEL: &'static str = "copy";
 }
 
+impl Label for HardLink {
+    const LABEL: &'static str = "hard link";
+}
+
 impl Label for Move {
     const LABEL: &'static str = "move";
+}
+
+impl Label for SoftLink {
+    const LABEL: &'static str = "soft link";
 }
 
 pub trait Print {
