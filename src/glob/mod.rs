@@ -101,12 +101,12 @@ impl<'b> AsRef<[u8]> for BytePath<'b> {
 }
 
 #[derive(Debug)]
-pub struct Entry {
+pub struct Entry<'t> {
     inner: DirEntry,
-    captures: Captures<'static>,
+    captures: Captures<'t>,
 }
 
-impl Entry {
+impl<'t> Entry<'t> {
     pub fn into_path(self) -> PathBuf {
         self.inner.into_path()
     }
@@ -123,7 +123,7 @@ impl Entry {
         self.inner.depth()
     }
 
-    pub fn captures(&self) -> &Captures<'static> {
+    pub fn captures(&self) -> &Captures<'t> {
         &self.captures
     }
 }
@@ -328,7 +328,7 @@ impl<'g, 't> Read<'g, 't> {
 }
 
 impl<'g, 't> Iterator for Read<'g, 't> {
-    type Item = Result<Entry, GlobError>;
+    type Item = Result<Entry<'static>, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         'walk: while let Some(entry) = self.walk.next() {
