@@ -88,7 +88,7 @@ Properties include source file metadata in the destination path and are
 specified following an exclamation `!`. Properties are case insensitive.
 Supported properties are described in the following table.
 
-| Pattern    | Description                            |
+| Pattern    | Metadata                               |
 |------------|----------------------------------------|
 | `{!b3sum}` | [Blake3] hash of the source file.      |
 | `{!ts}`    | Modified timestamp of the source file. |
