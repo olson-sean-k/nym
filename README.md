@@ -36,23 +36,24 @@ From-patterns match source files to actuate using Unix-like globs. Globs must
 use `/` as a path separator. Separators are normalized across platforms; glob
 patterns can match paths on Windows, for example.
 
-Globs resemble literal paths, but support three special tokens: the tree token
-`**`, the zero-or-more token `*`, and the exactly-one token `?`.
+Globs resemble literal paths, but support three wildcards: the tree wildcard
+`**`, the zero-or-more wildcard `*`, and the exactly-one wildcard `?`.
 
-The tree token `**` matches zero or more sub-directories. This is the only way
-to match against directories; all other tokens do **not** match across directory
-boundaries. When a tree token participates in a match and does not terminate the
-pattern, its capture includes a trailing path separator. If a tree token does
-not participate in a match, its capture is an empty string with no path
-separator. Tree tokens cannot be adjacent to any other tokens.
+The tree wildcard `**` matches zero or more sub-directories. This is the only
+way to match against arbitrary directories; all other wildcards do **not** match
+across directory boundaries. When a tree wildcard participates in a match and
+does not terminate the pattern, its capture includes a trailing path separator.
+If a tree wildcard does not participate in a match, its capture is an empty
+string with no path separator. Tree wildcards must be delimeted by path
+separators (or nothing, such as the beginning and/or end of a pattern).
 
-The zero-or-more token `*` matches zero or more of any character **except path
-separators**. Zero-or-more tokens cannot be adjacent to other zero-or-more
-tokens.
+The zero-or-more wildcard `*` matches zero or more of any character **except
+path separators**. Zero-or-more wildcards cannot be adjacent to other
+zero-or-more wildcards.
 
-The exactly-one token `?` matches any single character **except path
-separators**. Exactly-one tokens do not group, so a pattern of contiguous tokens
-such as `???` form distinct captures for each `?` token.
+The exactly-one wildcard `?` matches any single character **except path
+separators**. Exactly-one wildcards do not group, so a pattern of contiguous
+wildcards such as `???` form distinct captures for each `?` wildcard.
 
 ## To-Patterns
 
@@ -70,11 +71,11 @@ expression. Captures are referenced by name using `@` followed by the name of
 the desired capture, such as `{@extension}`. Note that named captures also have
 a numerical index.
 
-Captures may include a _substitution_. Substitutions specify a prefix and
-postfix that are inserted around the matching text when the capture is
-non-empty.  Substitutions also specify alternative text, which is used if the
-capture is empty. This is useful when a pattern may not be present and an
-explicit replacement or optional delimeter is desired.
+Captures may include a substitution. Substitutions specify a prefix and postfix
+that are inserted around the matching text when the capture is non-empty.
+Substitutions also specify alternative text, which is used if the capture is
+empty. This is useful when a pattern may not be present and an explicit
+replacement or optional delimeter is desired in the destination path.
 
 Substitutions follow capture identifiers beginning with a question mark `?` and
 followed by a prefix, a postfix, and an alternative separated by colons `:`. For
@@ -98,7 +99,7 @@ Nym is loosely based upon `mmv`. Below are some initial ideas that have not yet
 been implemented (in no particular order).
 
 - Support for various from-patterns, including raw binary regular expressions
-  and metadata operators (e.g., files modified after some timestamp).
+  and metadata filters (e.g., files modified after some timestamp).
 - Custom to-pattern properties read from the shell.
 - Formatters in to-patterns (e.g., width, alignment, capitalization, etc.).
 
@@ -115,9 +116,9 @@ cargo install --locked --path=. --force
 
 ## Disclaimer
 
-Nym is offered as is with no warranty. At the time of this writing, Nym is
-highly experimental and likely has many bugs. Data loss may occur. **Use at your
-own risk.**
+Nym is offered as is with no warranty. At the time of writing, Nym is highly
+experimental and likely has many bugs. Data loss may occur. **Use at your own
+risk.**
 
 [Blake3]: https://github.com/BLAKE3-team/BLAKE3
 [rustup]: https://rustup.rs/
