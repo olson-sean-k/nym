@@ -3,8 +3,8 @@
 </div>
 <br/>
 
-**Nym** is a library and command line tool for manipulating files using
-patterns. It is inspired by and very loosely based upon `mmv`.
+**Nym** is a cross-platform library and command line tool for manipulating files
+using patterns. It is inspired by and very loosely based upon `mmv`.
 
 [![GitHub](https://img.shields.io/badge/GitHub-olson--sean--k/nym-8da0cb?logo=github&style=for-the-badge)](https://github.com/olson-sean-k/nym)
 [![docs.rs](https://img.shields.io/badge/docs.rs-nym-66c2a5?logo=rust&style=for-the-badge)](https://docs.rs/nym)
