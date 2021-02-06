@@ -44,7 +44,7 @@ way to match against arbitrary directories; all other wildcards do **not** match
 across directory boundaries. When a tree wildcard participates in a match and
 does not terminate the pattern, its capture includes a trailing path separator.
 If a tree wildcard does not participate in a match, its capture is an empty
-string with no path separator. Tree wildcards must be delimeted by path
+string with no path separator. Tree wildcards must be delimited by path
 separators (or nothing, such as the beginning and/or end of a pattern).
 
 The zero-or-more wildcard `*` matches zero or more of any character **except
@@ -75,7 +75,7 @@ Captures may include a substitution. Substitutions specify a prefix and postfix
 that are inserted around the matching text when the capture is non-empty.
 Substitutions also specify alternative text, which is used if the capture is
 empty. This is useful when a pattern may not be present and an explicit
-replacement or optional delimeter is desired in the destination path.
+replacement or optional delimiter is desired in the destination path.
 
 Substitutions follow capture identifiers beginning with a question mark `?` and
 followed by a prefix, a postfix, and an alternative separated by colons `:`. For
