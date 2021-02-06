@@ -12,20 +12,23 @@ patterns. It is inspired by and very loosely based upon `mmv`.
 
 ## Usage
 
-Nym commands are formed from flags, options, an actuator, and a transform
-comprised of a from-pattern and to-pattern. An _actuator_ is a file operation
-like append, copy, link, or move. A _transform_ is a from-pattern used to match
-source files and a to-pattern used to resolve destination paths.
+Nym commands are formed from flags, options, and an actuator followed by a
+transform comprised of a from-pattern and to-pattern. An actuator is a file
+operation like `append`, `copy`, `link`, or `move`. A transform is a
+from-pattern used to match source files and a to-pattern used to resolve
+destination paths.
 
-The following command copies all files in the working directory tree to a file
-with an appended `.bak` extension:
+The following command copies all files in the working directory tree to a
+neighboring file with an appended `.bak` extension:
 
 ```shell
 nym copy '**' '{#1}.bak'
 ```
 
 Here, `copy` is the actuator, `**` is the from-pattern, and `{#1}.bak` is the
-to-pattern.
+to-pattern. In most shells, patterns must be escaped to avoid interacting with
+features like expansion. Quoting patterns usually prevents these unwanted
+interactions.
 
 ## From-Patterns
 
@@ -49,7 +52,7 @@ tokens.
 
 The exactly-one token `?` matches any single character **except path
 separators**. Exactly-one tokens do not group, so a pattern of contiguous tokens
-like `???` form distinct captures for each `?` token.
+such as `???` form distinct captures for each `?` token.
 
 ## To-Patterns
 
@@ -58,9 +61,9 @@ captures from a corresponding from-pattern, and file properties. Non-literals
 occur within curly braces `{...}`.
 
 Captures are typically indexed from a from-pattern using a hash followed by an
-index, like `{#1}`. These indices count from one and the index zero is used for
-the full text of a match. Empty braces also respresent the full text of a match,
-so `{#0}` and `{}` are equivalent.
+index, like `{#1}`. These indices count from one; the zero index is used for the
+full text of a match. Empty braces also respresent the full text of a match, so
+`{#0}` and `{}` are equivalent.
 
 Captures can also be named when the from-pattern is a raw binary regular
 expression. Captures are referenced by name using `@` followed by the name of
@@ -84,14 +87,25 @@ Properties include source file metadata in the destination path and are
 specified following an exclamation `!`. Properties are case insensitive.
 Supported properties are described in the following table.
 
-| Pattern        | Description                            |
-|----------------|----------------------------------------|
-| `{!b3sum}`     | Blake3 hash of the source file.        |
-| `{!timestamp}` | Modified timestamp of the source file. |
+| Pattern    | Description                            |
+|------------|----------------------------------------|
+| `{!b3sum}` | [Blake3] hash of the source file.      |
+| `{!ts}`    | Modified timestamp of the source file. |
+
+## Development
+
+Nym is loosely based upon `mmv`. Below are some initial ideas that have not yet
+been implemented (in no particular order).
+
+- Support for various from-patterns, including raw binary regular expressions
+  and metadata operators (e.g., files modified after some timestamp).
+- Custom to-pattern properties read from the shell.
+- Formatters in to-patterns (e.g., width, alignment, capitalization, etc.).
 
 ## Installation
 
-Use `cargo` to install from a clone of the repository.
+[Install Rust][rustup] and use `cargo` to install from a clone of the
+repository.
 
 ```shell
 git clone https://github.com/olson-sean-k/nym.git
@@ -101,5 +115,9 @@ cargo install --locked --path=. --force
 
 ## Disclaimer
 
-Nym is offered as is with no warranty. Data loss may occur. **Use at your own
-risk.**
+Nym is offered as is with no warranty. At the time of this writing, Nym is
+highly experimental and likely has many bugs. Data loss may occur. **Use at your
+own risk.**
+
+[Blake3]: https://github.com/BLAKE3-team/BLAKE3
+[rustup]: https://rustup.rs/
