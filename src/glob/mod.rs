@@ -409,21 +409,6 @@ mod tests {
 
     use crate::glob::{ByIndex, BytePath, Glob};
 
-    // ---
-    // TODO: Remove this (very broken) test. This is used for some quick and
-    //       dirty manual testing, but should be removed ASAP.
-    #[test]
-    fn read() {
-        //let glob = Glob::parse("/home/sean/src/nym/src/**/*.rs").unwrap();
-        let glob = Glob::parse("src/**/*.rs").unwrap();
-        eprintln!("GLOB {:?}", glob);
-        for entry in glob.read(".", 255) {
-            let entry = entry.unwrap();
-            eprintln!("MATCHED: {:?}", entry.path());
-        }
-    }
-    // ---
-
     #[test]
     fn parse_glob_with_zom_tokens() {
         Glob::parse("*").unwrap();
