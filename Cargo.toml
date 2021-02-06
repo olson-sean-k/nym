@@ -24,7 +24,7 @@ categories = [
 name = "nym"
 
 [dependencies]
-anyhow = "^1.0.0"
+anyhow = "^1.0.38"
 bimap = "^0.6.0"
 blake3 = "^0.3.0"
 bstr = "^0.2.0"
