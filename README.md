@@ -80,9 +80,8 @@ replacement or optional delimeter is desired in the destination path.
 Substitutions follow capture identifiers beginning with a question mark `?` and
 followed by a prefix, a postfix, and an alternative separated by colons `:`. For
 example, `{#1?:-:}` is replaced by the matching text of the first capture and a
-postfixed character "-" if the capture is non-empty and is replaced with an
-empty string otherwise. `{#1?::unknown}` is replaced by the text "unkown" if the
-capture is empty.
+postfixed `-` if the capture is non-empty and is replaced with an empty string
+otherwise. `{#1?::unknown}` is replaced by `unknown` if the capture is empty.
 
 Properties include source file metadata in the destination path and are
 specified following an exclamation `!`. Properties are case insensitive.
