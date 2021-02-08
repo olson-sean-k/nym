@@ -12,11 +12,11 @@ pub struct FromPattern<'t> {
 }
 
 impl<'t> FromPattern<'t> {
-    pub fn read(
-        &self,
-        directory: impl AsRef<Path>,
+    pub fn read<'a>(
+        &'a self,
+        directory: impl 'a + AsRef<Path>,
         depth: usize,
-    ) -> impl '_ + Iterator<Item = Result<Entry, GlobError>> {
+    ) -> impl 'a + Iterator<Item = Result<Entry, GlobError>> {
         self.glob.read(directory, depth).filter_map_ok(|entry| {
             if entry.file_type().is_file() {
                 Some(entry)

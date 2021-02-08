@@ -212,7 +212,11 @@ impl<'t> Glob<'t> {
         self.regex.captures(path.as_ref()).map(From::from)
     }
 
-    pub fn read(&self, directory: impl AsRef<Path>, depth: usize) -> Read<'_, 't> {
+    pub fn read(
+        &self,
+        directory: impl AsRef<Path>,
+        depth: usize,
+    ) -> impl '_ + Iterator<Item = Result<Entry<'static>, GlobError>> {
         // The directory tree is traversed from `root`, which may include a path
         // prefix from the glob pattern. `Read` patterns are only applied to
         // path components following the `prefix` in `root`.
@@ -289,7 +293,7 @@ impl FromStr for Glob<'static> {
     }
 }
 
-pub struct Read<'g, 't> {
+struct Read<'g, 't> {
     glob: &'g Glob<'t>,
     regexes: Vec<Regex>,
     prefix: PathBuf,
