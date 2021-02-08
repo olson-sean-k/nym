@@ -6,6 +6,7 @@ pub mod actuator;
 pub mod environment;
 pub mod glob;
 pub mod manifest;
+pub mod memoize;
 pub mod pattern;
 pub mod transform;
 

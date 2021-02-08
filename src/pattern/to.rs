@@ -7,6 +7,7 @@ use std::path::Path;
 use std::str::{self, FromStr};
 
 use crate::glob::{ByIndex, ByName, Captures};
+use crate::memoize::Memoized;
 use crate::pattern::PatternError;
 
 #[derive(Clone, Debug)]
@@ -271,6 +272,14 @@ impl<'a> ToPattern<'a> {
         source: impl AsRef<Path>,
         captures: &Captures<'_>,
     ) -> Result<String, PatternError> {
+        let mut b3sum = Memoized::from(|| {
+            fs::read(source.as_ref())
+                .map(|data| blake3::hash(data.as_ref()).to_hex().as_str().to_owned())
+        });
+        let mut timestamp = Memoized::from(|| {
+            fs::metadata(source.as_ref())
+                .map(|metadata| format!("{}", FileTime::from_last_modification_time(&metadata)))
+        });
         let mut output = String::new();
         for token in &self.tokens {
             match *token {
@@ -318,18 +327,10 @@ impl<'a> ToPattern<'a> {
                 }
                 Token::Property(ref property) => match *property {
                     Property::B3Sum => {
-                        let hash = blake3::hash(
-                            fs::read(source.as_ref())
-                                .map_err(PatternError::Property)?
-                                .as_ref(),
-                        );
-                        output.push_str(hash.to_hex().as_str());
+                        output.push_str(b3sum.get().map_err(PatternError::Property)?);
                     }
                     Property::Timestamp => {
-                        let metadata =
-                            fs::metadata(source.as_ref()).map_err(PatternError::Property)?;
-                        let time = FileTime::from_last_modification_time(&metadata);
-                        output.push_str(&format!("{}", time));
+                        output.push_str(timestamp.get().map_err(PatternError::Property)?);
                     }
                 },
             }
