@@ -13,10 +13,9 @@ using patterns. It is inspired by and very loosely based upon `mmv`.
 ## Usage
 
 Nym commands are formed from flags, options, and an actuator followed by a
-transform comprised of a from-pattern and to-pattern. An actuator is a file
-operation like `append`, `copy`, `link`, or `move`. A transform is a
-from-pattern used to match source files and a to-pattern used to resolve
-destination paths.
+transform. An actuator is a file operation like `append`, `copy`, `link`, or
+`move`. A transform is a from-pattern used to match source files and a
+to-pattern used to resolve destination paths.
 
 The following command copies all files in the working directory tree to a
 neighboring file with an appended `.bak` extension:
@@ -71,17 +70,19 @@ expression. Captures are referenced by name using `@` followed by the name of
 the desired capture, such as `{@extension}`. Note that named captures also have
 a numerical index.
 
-Captures may include a substitution. Substitutions specify a prefix and postfix
-that are inserted around the matching text when the capture is non-empty.
-Substitutions also specify alternative text, which is used if the capture is
-empty. This is useful when a pattern may not be present and an explicit
-replacement or optional delimiter is desired in the destination path.
+Captures may include a condition. Conditions specify substitution text based on
+whether the match text is non-empty or empty. Conditions follow capture
+identifiers using a ternary-like syntax: they begin with a question mark `?`
+followed by the non-empty case, a colon `:`, and finally the empty case. Each
+case supports literals, which specify alternative text delimited by square
+brackets `[...]`. In the non-empty case, a surrounding prefix and postfix can be
+used instead using a tuple-like syntax `(...,...)`.  Substitution text as well
+as cases may be empty.
 
-Substitutions follow capture identifiers beginning with a question mark `?` and
-followed by a prefix, a postfix, and an alternative separated by colons `:`. For
-example, `{#1?:-:}` is replaced by the matching text of the first capture and a
-postfixed `-` if the capture is non-empty and is replaced with an empty string
-otherwise. `{#1?::unknown}` is replaced by `unknown` if the capture is empty.
+For example, `{#1?(,-):}` is replaced by the matching text of the first capture
+and, when that text is **non-empty**, is followed by the postfix `-`.
+`{#1?:[unknown]}` is replaced by the matching text of the first capture and,
+when that text is **empty**, is replaced by the literal `unknown`.
 
 Properties include source file metadata in the destination path and are
 specified following an exclamation `!`. Properties are case insensitive.
@@ -116,7 +117,7 @@ cargo install --locked --path=. --force
 
 ## Disclaimer
 
-Nym is offered as is with no warranty. At the time of writing, Nym is highly
+Nym is provided as is with no warranty. At the time of writing, Nym is highly
 experimental and likely has many bugs. Data loss may occur. **Use at your own
 risk.**
 

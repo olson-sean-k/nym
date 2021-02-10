@@ -44,32 +44,62 @@ impl From<String> for Identifier<'static> {
 }
 
 #[derive(Clone, Debug)]
-struct Substitution<'a> {
-    prefix: Cow<'a, str>,
-    postfix: Cow<'a, str>,
-    absent: Cow<'a, str>,
+enum NonEmpty<'t> {
+    Surround {
+        prefix: Cow<'t, str>,
+        postfix: Cow<'t, str>,
+    },
+    Literal(Cow<'t, str>),
 }
 
-impl<'a> Substitution<'a> {
-    pub fn into_owned(self) -> Substitution<'static> {
-        let Substitution {
-            prefix,
-            postfix,
-            absent,
-        } = self;
-        Substitution {
-            prefix: prefix.into_owned().into(),
-            postfix: postfix.into_owned().into(),
-            absent: absent.into_owned().into(),
+impl<'t> NonEmpty<'t> {
+    pub fn into_owned(self) -> NonEmpty<'static> {
+        match self {
+            NonEmpty::Surround { prefix, postfix } => NonEmpty::Surround {
+                prefix: prefix.into_owned().into(),
+                postfix: postfix.into_owned().into(),
+            },
+            NonEmpty::Literal(literal) => NonEmpty::Literal(literal.into_owned().into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Empty<'t>(Cow<'t, str>);
+
+impl<'t> Empty<'t> {
+    pub fn into_owned(self) -> Empty<'static> {
+        let Empty(literal) = self;
+        Empty(literal.into_owned().into())
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct Condition<'t> {
+    non_empty: Option<NonEmpty<'t>>,
+    empty: Option<Empty<'t>>,
+}
+
+impl<'t> Condition<'t> {
+    pub fn into_owned(self) -> Condition<'static> {
+        let Condition { non_empty, empty } = self;
+        Condition {
+            non_empty: non_empty.map(|non_empty| non_empty.into_owned()),
+            empty: empty.map(|empty| empty.into_owned()),
         }
     }
 
-    pub fn format<'t>(&self, capture: &'t str) -> Cow<'t, str> {
-        if self.prefix.is_empty() && self.postfix.is_empty() {
-            capture.into()
-        }
-        else {
-            format!("{}{}{}", self.prefix, capture, self.postfix).into()
+    pub fn format(&self, capture: &'t str) -> Cow<'t, str> {
+        match (capture.is_empty(), &self.non_empty, &self.empty) {
+            (true, _, Some(ref empty)) => empty.0.clone(),
+            (false, Some(ref non_empty), _) => match non_empty {
+                NonEmpty::Surround {
+                    ref prefix,
+                    ref postfix,
+                } => format!("{}{}{}", prefix, capture, postfix,).into(),
+                NonEmpty::Literal(ref literal) => literal.clone(),
+            },
+            (true, _, None) | (false, None, _) => capture.into(),
         }
     }
 }
@@ -77,18 +107,18 @@ impl<'a> Substitution<'a> {
 #[derive(Clone, Debug)]
 struct Capture<'a> {
     identifier: Identifier<'a>,
-    substitution: Option<Substitution<'a>>,
+    condition: Condition<'a>,
 }
 
 impl<'a> Capture<'a> {
     pub fn into_owned(self) -> Capture<'static> {
         let Capture {
             identifier,
-            substitution,
+            condition,
         } = self;
         Capture {
             identifier: identifier.into_owned(),
-            substitution: substitution.map(|substitution| substitution.into_owned()),
+            condition: condition.into_owned(),
         }
     }
 }
@@ -183,31 +213,57 @@ impl<'a> ToPattern<'a> {
             ))(input)
         }
 
-        fn substitution<'i, E>(input: &'i str) -> IResult<&'i str, Substitution, E>
+        fn condition<'i, E>(input: &'i str) -> IResult<&'i str, Condition, E>
         where
             E: ParseError<&'i str>,
         {
-            let element = |input| {
-                combinator::opt(combinator::map(
-                    // TODO: Stopping at `:}` is probably clunky. Note that
-                    //       `character::alphanumeric0` or similar categorical
-                    //       parsers may not work well, since they cannot
-                    //       support non-ASCII characters.
-                    bytes::is_not(":}"),
+            fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Cow<'i, str>, E>
+            where
+                E: ParseError<&'i str>,
+            {
+                combinator::map(
+                    sequence::delimited(
+                        bytes::tag("["),
+                        branch::alt((bytes::is_not("]"), bytes::tag(""))),
+                        bytes::tag("]"),
+                    ),
                     Cow::from,
+                )(input)
+            }
+
+            fn non_empty<'i, E>(input: &'i str) -> IResult<&'i str, NonEmpty<'i>, E>
+            where
+                E: ParseError<&'i str>,
+            {
+                let element = |input| {
+                    combinator::map(
+                        branch::alt((bytes::is_not(",)"), bytes::tag(""))),
+                        Cow::from,
+                    )(input)
+                };
+                branch::alt((
+                    combinator::map(literal, NonEmpty::Literal),
+                    combinator::map(
+                        sequence::delimited(
+                            bytes::tag("("),
+                            sequence::separated_pair(element, bytes::tag(","), element),
+                            bytes::tag(")"),
+                        ),
+                        |(prefix, postfix)| NonEmpty::Surround { prefix, postfix },
+                    ),
                 ))(input)
-            };
+            }
+
             combinator::map(
-                sequence::separated_pair(
-                    element,
-                    bytes::tag(":"),
-                    sequence::separated_pair(element, bytes::tag(":"), element),
+                sequence::preceded(
+                    bytes::tag("?"),
+                    sequence::separated_pair(
+                        combinator::opt(non_empty),
+                        bytes::tag(":"),
+                        combinator::opt(combinator::map(literal, Empty)),
+                    ),
                 ),
-                |(prefix, (postfix, absent))| Substitution {
-                    prefix: prefix.unwrap_or_else(|| "".into()),
-                    postfix: postfix.unwrap_or_else(|| "".into()),
-                    absent: absent.unwrap_or_else(|| "".into()),
-                },
+                |(non_empty, empty)| Condition { non_empty, empty },
             )(input)
         }
 
@@ -218,12 +274,12 @@ impl<'a> ToPattern<'a> {
             combinator::map(
                 braced(sequence::tuple((
                     identifier,
-                    combinator::opt(sequence::preceded(bytes::tag("?"), substitution)),
+                    branch::alt((condition, combinator::success(Condition::default()))),
                 ))),
-                |(identifier, substitution)| {
+                |(identifier, condition)| {
                     Token::from(Capture {
                         identifier,
-                        substitution,
+                        condition,
                     })
                 },
             )(input)
@@ -285,42 +341,24 @@ impl<'a> ToPattern<'a> {
             match *token {
                 Token::Capture(Capture {
                     ref identifier,
-                    ref substitution,
+                    ref condition,
                 }) => {
                     let capture = match identifier {
                         Identifier::Index(ref index) => captures.get(ByIndex(*index)),
                         Identifier::Name(ref name) => captures.get(ByName(name)),
                     }
-                    // Do not include empty captures. This means that absent
-                    // substitutions are applied when a capture technically
-                    // participates in a match but with no bytes. This typically
-                    // occurs when using Kleene stars.
+                    // Do not include empty captures. Captures that do not
+                    // participate in a match and empty match text are treated
+                    // the same way: the condition operates on an empty string.
                     .filter(|bytes| !bytes.is_empty())
                     .map(|bytes| str::from_utf8(bytes).map_err(PatternError::Encoding));
-                    let text: Cow<_> = if let Some(capture) = capture {
-                        let capture = capture?;
-                        if let Some(substitution) = substitution {
-                            substitution.format(capture)
-                        }
-                        else {
-                            capture.into()
-                        }
+                    let capture: Cow<_> = if let Some(capture) = capture {
+                        capture?.into()
                     }
                     else {
-                        // TODO: If there is no substitution here, a
-                        //       `CaptureNotFound` error could be emitted, but
-                        //       an empty string is a reasonable output.
-                        //       Moreover, the `regex` crate does not provide a
-                        //       way to distinguish between the existence of a
-                        //       capture in an expression vs. its participation
-                        //       in a match. Is there some way to reconcile
-                        //       this?
-                        substitution
-                            .as_ref()
-                            .map(|substitution| substitution.absent.clone())
-                            .unwrap_or_else(|| "".into())
+                        "".into()
                     };
-                    output.push_str(text.as_ref());
+                    output.push_str(condition.format(capture.as_ref()).as_ref());
                 }
                 Token::Literal(ref text) => {
                     output.push_str(text);
@@ -352,10 +390,25 @@ mod tests {
     use crate::pattern::ToPattern;
 
     #[test]
-    fn parse_to_pattern_substitution() {
-        ToPattern::parse("{#1?a:b:c}").unwrap();
-        ToPattern::parse("{#1?a:b:}").unwrap();
-        ToPattern::parse("{#1?a::}").unwrap();
-        ToPattern::parse("{#1?::}").unwrap();
+    fn parse_to_pattern() {
+        ToPattern::parse("{}").unwrap();
+        ToPattern::parse("{#1}").unwrap();
+        ToPattern::parse("literal{#1}").unwrap();
+        ToPattern::parse("{#1}literal").unwrap();
+    }
+
+    #[test]
+    fn parse_to_pattern_condition() {
+        ToPattern::parse("{#1?:}").unwrap();
+        ToPattern::parse("{#1?[yes]:}").unwrap();
+        ToPattern::parse("{#1?[]:}").unwrap();
+        ToPattern::parse("{#1?(prefix,postfix):}").unwrap();
+        ToPattern::parse("{#1?:[no]}").unwrap();
+        ToPattern::parse("{#1?(,-):[no]}").unwrap();
+    }
+
+    #[test]
+    fn reject_to_pattern_with_empty_case_surround() {
+        assert!(ToPattern::parse("{#1?:(prefix,postfix)}").is_err());
     }
 }
