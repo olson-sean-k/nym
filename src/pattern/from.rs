@@ -3,8 +3,10 @@ use std::path::Path;
 
 use crate::glob::{Entry, Glob, GlobError};
 
-// NOTE: If and when raw binary regular expressions are re-introduced,
-//       `FromPattern` will no longer be so trivial.
+// NOTE: If and when additional from-patterns are supported (such as raw binary
+//       regular expressions), `FromPattern` will no longer be so trivial.
+//       Moreover, glob types like `Entry` and `Captures` will need to be
+//       abstracted away (and `Selector` can be re-introduced).
 
 #[derive(Clone, Debug)]
 pub struct FromPattern<'t> {

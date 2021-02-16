@@ -17,10 +17,7 @@ use walkdir::{self, DirEntry, WalkDir};
 use crate::glob::token::{Evaluation, Token, Wildcard};
 use crate::PositionExt as _;
 
-pub use crate::glob::capture::{Captures, Selector};
-
-pub use Selector::ByIndex;
-pub use Selector::ByName;
+pub use crate::glob::capture::Captures;
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -412,7 +409,7 @@ fn escape(byte: u8) -> String {
 mod tests {
     use std::path::Path;
 
-    use crate::glob::{ByIndex, BytePath, Glob};
+    use crate::glob::{BytePath, Glob};
 
     #[test]
     fn parse_glob_with_eager_zom_tokens() {
@@ -508,7 +505,7 @@ mod tests {
             b"x/y/z/",
             glob.captures(&BytePath::from_path(Path::new("a/x/y/z/b")))
                 .unwrap()
-                .get(ByIndex(1))
+                .get(1)
                 .unwrap()
         );
     }
@@ -523,8 +520,8 @@ mod tests {
 
         let path = BytePath::from_path(Path::new("a/file.ext"));
         let captures = glob.captures(&path).unwrap();
-        assert_eq!(b"a/", captures.get(ByIndex(1)).unwrap());
-        assert_eq!(b"file", captures.get(ByIndex(2)).unwrap());
+        assert_eq!(b"a/", captures.get(1).unwrap());
+        assert_eq!(b"file", captures.get(2).unwrap());
     }
 
     #[test]
@@ -536,8 +533,8 @@ mod tests {
 
         let path = BytePath::from_path(Path::new("a-b-c.ext"));
         let captures = glob.captures(&path).unwrap();
-        assert_eq!(b"a", captures.get(ByIndex(1)).unwrap());
-        assert_eq!(b"b-c", captures.get(ByIndex(2)).unwrap());
-        assert_eq!(b"ext", captures.get(ByIndex(3)).unwrap());
+        assert_eq!(b"a", captures.get(1).unwrap());
+        assert_eq!(b"b-c", captures.get(2).unwrap());
+        assert_eq!(b"ext", captures.get(3).unwrap());
     }
 }

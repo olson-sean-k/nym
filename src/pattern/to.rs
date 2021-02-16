@@ -7,7 +7,7 @@ use std::path::Path;
 use std::str::{self, FromStr};
 
 use crate::fmt::{self, Alignment, Format};
-use crate::glob::{ByIndex, ByName, Captures};
+use crate::glob::Captures;
 use crate::memoize::Memoized;
 use crate::pattern::PatternError;
 
@@ -468,8 +468,11 @@ impl<'a> ToPattern<'a> {
                             ref condition,
                         }) => {
                             let capture = match identifier {
-                                Identifier::Index(ref index) => captures.get(ByIndex(*index)),
-                                Identifier::Name(ref name) => captures.get(ByName(name)),
+                                Identifier::Index(ref index) => captures.get(*index),
+                                // TODO: Get captures by name when using
+                                //       from-patterns that support it. See
+                                //       `pattern::from`.
+                                Identifier::Name(_) => None,
                             }
                             // Do not include empty captures. Captures that do
                             // not participate in a match and empty match text
