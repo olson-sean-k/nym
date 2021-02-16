@@ -14,7 +14,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
 
-use crate::glob::token::{Token, Wildcard};
+use crate::glob::token::{Evaluation, Token, Wildcard};
 use crate::PositionExt as _;
 
 pub use crate::glob::capture::{Captures, Selector};
@@ -152,7 +152,8 @@ impl<'t> Glob<'t> {
                 }
                 (_, Token::NonTreeSeparator) => push(&escape(b'/')),
                 (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
-                (_, Token::Wildcard(Wildcard::ZeroOrMore)) => push("([^/]*)"),
+                (_, Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager))) => push("([^/]*)"),
+                (_, Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Lazy))) => push("([^/]*?)"),
                 (Position::First(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*/))"),
                 (Position::Middle(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*/))"),
                 (Position::Last(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|/(.*))"),
@@ -414,13 +415,23 @@ mod tests {
     use crate::glob::{ByIndex, BytePath, Glob};
 
     #[test]
-    fn parse_glob_with_zom_tokens() {
+    fn parse_glob_with_eager_zom_tokens() {
         Glob::parse("*").unwrap();
         Glob::parse("a/*").unwrap();
         Glob::parse("*a").unwrap();
         Glob::parse("a*").unwrap();
         Glob::parse("a*b").unwrap();
         Glob::parse("/*").unwrap();
+    }
+
+    #[test]
+    fn parse_glob_with_lazy_zom_tokens() {
+        Glob::parse("$").unwrap();
+        Glob::parse("a/$").unwrap();
+        Glob::parse("$a").unwrap();
+        Glob::parse("a$").unwrap();
+        Glob::parse("a$b").unwrap();
+        Glob::parse("/$").unwrap();
     }
 
     #[test]
@@ -441,6 +452,7 @@ mod tests {
         Glob::parse("*/?").unwrap();
         Glob::parse("?*?").unwrap();
         Glob::parse("/?*").unwrap();
+        Glob::parse("?$").unwrap();
     }
 
     #[test]
@@ -459,10 +471,12 @@ mod tests {
         assert!(Glob::parse("***").is_err());
         assert!(Glob::parse("****").is_err());
         assert!(Glob::parse("**/*/***").is_err());
+        assert!(Glob::parse("**$").is_err());
+        assert!(Glob::parse("**/$**").is_err());
     }
 
     #[test]
-    fn reject_glob_with_adjacent_literal_tokens() {
+    fn reject_glob_with_tree_adjacent_literal_tokens() {
         assert!(Glob::parse("**a").is_err());
         assert!(Glob::parse("a**").is_err());
         assert!(Glob::parse("a**b").is_err());
@@ -511,5 +525,19 @@ mod tests {
         let captures = glob.captures(&path).unwrap();
         assert_eq!(b"a/", captures.get(ByIndex(1)).unwrap());
         assert_eq!(b"file", captures.get(ByIndex(2)).unwrap());
+    }
+
+    #[test]
+    fn match_glob_with_eager_and_lazy_zom_tokens() {
+        let glob = Glob::parse("$-*.*").unwrap();
+
+        assert!(glob.is_match(Path::new("prefix-file.ext")));
+        assert!(glob.is_match(Path::new("a-b-c.ext")));
+
+        let path = BytePath::from_path(Path::new("a-b-c.ext"));
+        let captures = glob.captures(&path).unwrap();
+        assert_eq!(b"a", captures.get(ByIndex(1)).unwrap());
+        assert_eq!(b"b-c", captures.get(ByIndex(2)).unwrap());
+        assert_eq!(b"ext", captures.get(ByIndex(3)).unwrap());
     }
 }

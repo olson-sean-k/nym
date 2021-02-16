@@ -35,8 +35,8 @@ From-patterns match source files to actuate using Unix-like globs. Globs must
 use `/` as a path separator. Separators are normalized across platforms; glob
 patterns can match paths on Windows, for example.
 
-Globs resemble literal paths, but support three wildcards: the tree wildcard
-`**`, the zero-or-more wildcard `*`, and the exactly-one wildcard `?`.
+Globs resemble literal paths, but support wildcards: the tree wildcard `**`, the
+zero-or-more wildcards `*` and `$`, and the exactly-one wildcard `?`.
 
 The tree wildcard `**` matches zero or more sub-directories. This is the only
 way to match against arbitrary directories; all other wildcards do **not** match
@@ -44,11 +44,16 @@ across directory boundaries. When a tree wildcard participates in a match and
 does not terminate the pattern, its capture includes a trailing path separator.
 If a tree wildcard does not participate in a match, its capture is an empty
 string with no path separator. Tree wildcards must be delimited by path
-separators (or nothing, such as the beginning and/or end of a pattern).
+separators or nothing (such as the beginning and/or end of a pattern). If a glob
+consists solely of a tree wildcard, then it matches all files in the working
+directory tree.
 
-The zero-or-more wildcard `*` matches zero or more of any character **except
-path separators**. Zero-or-more wildcards cannot be adjacent to other
-zero-or-more wildcards.
+The zero-or-more wildcards `*` and `$` match zero or more of any character
+**except path separators**. Zero-or-more wildcards cannot be adjacent to other
+zero-or-more wildcards. The `*` wildcard is eager and will match the longest
+possible text while the `$` wildcard is lazy and will match the shortest
+possible text. When followed by a literal, `*` stops at the last occurrence of
+that literal while `$` stops at the first occurence.
 
 The exactly-one wildcard `?` matches any single character **except path
 separators**. Exactly-one wildcards do not group, so a pattern of contiguous

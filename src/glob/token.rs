@@ -4,10 +4,16 @@ use std::borrow::Cow;
 use crate::glob::GlobError;
 
 #[derive(Clone, Copy, Debug)]
+pub enum Evaluation {
+    Eager,
+    Lazy,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum Wildcard {
-    One,        // ?
-    ZeroOrMore, // *
-    Tree,       // **
+    One,
+    ZeroOrMore(Evaluation),
+    Tree,
 }
 
 #[derive(Clone, Debug)]
@@ -96,9 +102,16 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
             combinator::map(
                 sequence::terminated(
                     bytes::tag("*"),
-                    branch::alt((combinator::peek(bytes::is_not("*")), combinator::eof)),
+                    branch::alt((combinator::peek(bytes::is_not("*$")), combinator::eof)),
                 ),
-                |_| Token::from(Wildcard::ZeroOrMore),
+                |_| Token::from(Wildcard::ZeroOrMore(Evaluation::Eager)),
+            ),
+            combinator::map(
+                sequence::terminated(
+                    bytes::tag("$"),
+                    branch::alt((combinator::peek(bytes::is_not("*$")), combinator::eof)),
+                ),
+                |_| Token::from(Wildcard::ZeroOrMore(Evaluation::Lazy)),
             ),
         ))(input)
     }
@@ -133,10 +146,30 @@ pub fn optimize<'t>(
             matches!(
                 (left, right),
                 (
-                    Token::Wildcard(Wildcard::ZeroOrMore),
-                    Token::Wildcard(Wildcard::ZeroOrMore)
+                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager)),
+                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager))
                 )
             )
+        })
+        .dedup_by(|left, right| {
+            matches!(
+                (left, right),
+                (
+                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Lazy)),
+                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Lazy))
+                )
+            )
+        })
+        .coalesce(|left, right| match (&left, &right) {
+            (
+                Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager)),
+                Token::Wildcard(Wildcard::ZeroOrMore(_)),
+            )
+            | (
+                Token::Wildcard(Wildcard::ZeroOrMore(_)),
+                Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager)),
+            ) => Ok(Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager))),
+            _ => Err((left, right)),
         })
         .filter(|token| match &token {
             Token::Literal(ref literal) => !literal.is_empty(),
