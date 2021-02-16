@@ -4,6 +4,7 @@
 
 pub mod actuator;
 pub mod environment;
+pub mod fmt;
 pub mod glob;
 pub mod manifest;
 pub mod memoize;

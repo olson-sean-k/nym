@@ -56,31 +56,32 @@ wildcards such as `???` form distinct captures for each `?` wildcard.
 
 ## To-Patterns
 
-To-patterns resolve destination paths. These patterns consist of literals,
-captures from a corresponding from-pattern, and file properties. Non-literals
-occur within curly braces `{...}`.
+To-patterns resolve destination paths. These patterns consist of literals and
+substitutions. A substitution is either a capture from a corresponding
+from-pattern or file metadata. Substitutions are delimited by curly braces
+`{...}`.
 
 Captures are typically indexed from a from-pattern using a hash followed by an
 index, like `{#1}`. These indices count from one; the zero index is used for the
 full text of a match. Empty braces also respresent the full text of a match, so
 `{#0}` and `{}` are equivalent.
 
-Captures can also be named when the from-pattern is a raw binary regular
-expression. Captures are referenced by name using `@` followed by the name of
-the desired capture, such as `{@extension}`. Note that named captures also have
-a numerical index.
+Captures can also be named when supported by the from-pattern (e.g., raw binary
+regular expressions). Captures are referenced by name using `@` followed by the
+name of the desired capture delimited by square brackets, such as
+`{@[extension]}`. Note that named captures also have a numerical index.
 
 Captures may include a condition. Conditions specify substitution text based on
-whether the match text is non-empty or empty. Conditions follow capture
-identifiers using a ternary-like syntax: they begin with a question mark `?`
-followed by the non-empty case, a colon `:`, and finally the empty case. Each
-case supports literals, which specify alternative text delimited by square
-brackets `[...]`. In the non-empty case, a surrounding prefix and postfix can be
-used instead using a tuple-like syntax `(...,...)`.  Substitution text as well
-as cases may be empty.
+whether or not the match text is empty. Conditions follow capture identifiers
+using a ternary-like syntax: they begin with a question mark `?` followed by the
+non-empty case, a colon `:`, and finally the empty case. Each case supports
+literals, which specify alternative text delimited by square brackets `[...]`.
+In the non-empty case, a surrounding prefix and postfix can be used instead
+using two comma separated literals `[...],[...]`. Condition cases and
+substitution text may be empty.
 
-For example, `{#1?(,-):}` is replaced by the matching text of the first capture
-and, when that text is **non-empty**, is followed by the postfix `-`.
+For example, `{#1?[],[-]:}` is replaced by the matching text of the first
+capture and, when that text is **non-empty**, is followed by the postfix `-`.
 `{#1?:[unknown]}` is replaced by the matching text of the first capture and,
 when that text is **empty**, is replaced by the literal `unknown`.
 
@@ -92,6 +93,19 @@ Supported properties are described in the following table.
 |------------|----------------------------------------|
 | `{!b3sum}` | [Blake3] hash of the source file.      |
 | `{!ts}`    | Modified timestamp of the source file. |
+
+For example, `{!b3sum}` is replaced by the Blake3 hash of the matched file.
+
+Substitutions support optional formatters. Formatters must appear last in a
+substitution following a vertical bar `|`. Formatters are separated by commas
+`,`. Any number of formatters may be used and are applied in the order in which
+they appear.
+
+The pad formatter pads substitution text to a specified width and alignment
+using the given character shim. For example, `{#1|>4[0]}` pads the substition
+text into four columns using right alignment and the character `0` for padding.
+If the original substitution text is `13`, then it becomes `0013` after
+formatting.
 
 ## Development
 

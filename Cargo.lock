@@ -369,6 +369,7 @@ dependencies = [
  "structopt",
  "textwrap 0.13.2",
  "thiserror",
+ "unicode-width",
  "walkdir",
 ]
 
