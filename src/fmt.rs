@@ -1,10 +1,6 @@
 use std::borrow::Cow;
 use unicode_width::UnicodeWidthStr;
 
-pub trait Format<'t> {
-    fn format(&self, text: &'t str) -> Cow<'t, str>;
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Alignment {
     Left,
