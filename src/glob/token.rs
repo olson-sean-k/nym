@@ -57,7 +57,7 @@ impl From<Wildcard> for Token<'static> {
 //
 //       This should be fixed, but note that solutions that introduce invalid
 //       token sequences should be avoided! If possible, arbitrary token
-//       sequences be valid.
+//       sequences should always be valid.
 pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
     use nom::bytes::complete as bytes;
     use nom::error::ParseError;
@@ -80,7 +80,7 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
     where
         E: ParseError<&'i str>,
     {
-        combinator::map(no_adjacent_tree(bytes::is_not("/?*")), From::from)(input)
+        combinator::map(no_adjacent_tree(bytes::is_not("/?*$")), From::from)(input)
     }
 
     fn wildcard<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
