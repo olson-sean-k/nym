@@ -2,7 +2,7 @@ mod capture;
 mod token;
 
 use bstr::ByteVec;
-use itertools::{EitherOrBoth, Itertools as _, Position};
+use itertools::{EitherOrBoth, Itertools as _};
 use nom::error::ErrorKind;
 use os_str_bytes::OsStrBytes as _;
 use regex::bytes::Regex;
@@ -14,7 +14,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
 
-use crate::glob::token::{Evaluation, Token, Wildcard};
+use crate::glob::token::{Token, Wildcard};
 use crate::PositionExt as _;
 
 pub use crate::glob::capture::Captures;
@@ -22,15 +22,15 @@ pub use crate::glob::capture::Captures;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum GlobError {
-    #[error("failed to parse glob")]
-    Parse,
+    #[error("failed to parse glob: {0}")]
+    Parse(nom::Err<(String, ErrorKind)>),
     #[error("failed to read directory tree: {0}")]
     Read(walkdir::Error),
 }
 
-impl<I> From<nom::Err<(I, ErrorKind)>> for GlobError {
-    fn from(_: nom::Err<(I, ErrorKind)>) -> Self {
-        GlobError::Parse
+impl<'i> From<nom::Err<(&'i str, ErrorKind)>> for GlobError {
+    fn from(error: nom::Err<(&'i str, ErrorKind)>) -> Self {
+        GlobError::Parse(error.to_owned())
     }
 }
 
@@ -133,37 +133,127 @@ pub struct Glob<'t> {
 }
 
 impl<'t> Glob<'t> {
-    fn compile<T>(tokens: impl IntoIterator<Item = T>) -> Result<Regex, GlobError>
+    fn compile<T>(tokens: impl IntoIterator<Item = T>) -> Regex
     where
         T: Borrow<Token<'t>>,
     {
-        let mut pattern = String::new();
-        let mut push = |text: &str| pattern.push_str(text);
-        push("(?-u)^");
-        for token in tokens.into_iter().with_position() {
-            match token.interior_borrow().lift() {
-                (_, Token::Literal(ref literal)) => {
-                    for &byte in literal.as_bytes() {
-                        push(&escape(byte));
-                    }
+        #[derive(Clone, Copy, Debug)]
+        enum Grouping {
+            Capture,
+            NonCapture,
+        }
+
+        impl Grouping {
+            pub fn push_str(&self, pattern: &mut String, encoding: &str) {
+                self.push_with(pattern, |pattern| pattern.push_str(encoding));
+            }
+
+            pub fn push_with<F>(&self, pattern: &mut String, f: F)
+            where
+                F: Fn(&mut String),
+            {
+                match self {
+                    Grouping::Capture => pattern.push('('),
+                    Grouping::NonCapture => pattern.push_str("(:?"),
                 }
-                (_, Token::NonTreeSeparator) => push(&escape(b'/')),
-                (_, Token::Wildcard(Wildcard::One)) => push("([^/])"),
-                (_, Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager))) => push("([^/]*)"),
-                (_, Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Lazy))) => push("([^/]*?)"),
-                (Position::First(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|(.*/))"),
-                (Position::Middle(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/|/(.*/))"),
-                (Position::Last(_), Token::Wildcard(Wildcard::Tree)) => push("(?:/?|/(.*))"),
-                (Position::Only(_), Token::Wildcard(Wildcard::Tree)) => push("(.*)"),
+                f(pattern);
+                pattern.push(')');
             }
         }
-        push("$");
-        Regex::new(&pattern).map_err(|_| GlobError::Parse)
+
+        fn encode<'t, T>(
+            grouping: Grouping,
+            pattern: &mut String,
+            tokens: impl IntoIterator<Item = T>,
+        ) where
+            T: Borrow<Token<'t>>,
+        {
+            use itertools::Position::{First, Last, Middle, Only};
+
+            use crate::glob::token::Archetype::{Character, Range};
+            use crate::glob::token::Evaluation::{Eager, Lazy};
+            use crate::glob::token::Token::{Alternative, Literal, NonTreeSeparator, Wildcard};
+            use crate::glob::token::Wildcard::{Class, One, Tree, ZeroOrMore};
+
+            for token in tokens.into_iter().with_position() {
+                match token.interior_borrow().lift() {
+                    (_, Literal(ref literal)) => {
+                        for &byte in literal.as_bytes() {
+                            pattern.push_str(&escape(byte));
+                        }
+                    }
+                    (_, NonTreeSeparator) => pattern.push_str(&escape(b'/')),
+                    (_, Alternative(alternatives)) => {
+                        let encodings: Vec<_> = alternatives
+                            .iter()
+                            .map(|tokens| {
+                                let mut pattern = String::new();
+                                pattern.push_str("(?:");
+                                encode(Grouping::NonCapture, &mut pattern, tokens.iter());
+                                pattern.push(')');
+                                pattern
+                            })
+                            .collect();
+                        grouping.push_str(pattern, &encodings.join("|"));
+                    }
+                    (
+                        _,
+                        Wildcard(Class {
+                            is_negated,
+                            archetypes,
+                        }),
+                    ) => {
+                        grouping.push_with(pattern, |pattern| {
+                            pattern.push('[');
+                            if *is_negated {
+                                pattern.push('^');
+                            }
+                            for archetype in archetypes {
+                                match archetype {
+                                    Character(literal) => pattern.push(*literal),
+                                    Range(left, right) => {
+                                        pattern.push(*left);
+                                        pattern.push('-');
+                                        pattern.push(*right);
+                                    }
+                                }
+                            }
+                            pattern.push_str("&&[^/]]");
+                        });
+                    }
+                    (_, Wildcard(One)) => grouping.push_str(pattern, "[^/]"),
+                    (_, Wildcard(ZeroOrMore(Eager))) => grouping.push_str(pattern, "[^/]*"),
+                    (_, Wildcard(ZeroOrMore(Lazy))) => grouping.push_str(pattern, "[^/]*?"),
+                    (First(_), Wildcard(Tree)) => {
+                        pattern.push_str("(?:/?|");
+                        grouping.push_str(pattern, ".*/");
+                        pattern.push(')');
+                    }
+                    (Middle(_), Wildcard(Tree)) => {
+                        pattern.push_str("(?:/|/");
+                        grouping.push_str(pattern, ".*/");
+                        pattern.push(')');
+                    }
+                    (Last(_), Wildcard(Tree)) => {
+                        pattern.push_str("(?:/?|/");
+                        grouping.push_str(pattern, ".*");
+                        pattern.push(')');
+                    }
+                    (Only(_), Wildcard(Tree)) => grouping.push_str(pattern, ".*"),
+                }
+            }
+        }
+
+        let mut pattern = String::new();
+        pattern.push_str("(?-u)^");
+        encode(Grouping::Capture, &mut pattern, tokens);
+        pattern.push('$');
+        Regex::new(&pattern).expect("glob compilation failed")
     }
 
     pub fn parse(text: &'t str) -> Result<Self, GlobError> {
         let tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
-        let regex = Glob::compile(tokens.iter()).expect("glob compilation failed");
+        let regex = Glob::compile(tokens.iter());
         Ok(Glob { tokens, regex })
     }
 
@@ -233,7 +323,7 @@ impl<'t> Glob<'t> {
             let root: Cow<'_, Path> = directory.as_ref().into();
             (root.clone(), root)
         };
-        let regexes = Read::compile(self.tokens.iter()).expect("glob compilation failed");
+        let regexes = Read::compile(self.tokens.iter());
         Read {
             glob: self,
             regexes,
@@ -246,9 +336,6 @@ impl<'t> Glob<'t> {
         }
     }
 
-    // TODO: Copies and allocations could be avoided in cases where zero or one
-    //       tokens form a prefix, but this introduces complexity. Could such an
-    //       optimization be worthwhile?
     fn non_wildcard_prefix(&self) -> Option<String> {
         let mut prefix = String::new();
         for token in self
@@ -299,7 +386,7 @@ struct Read<'g, 't> {
 }
 
 impl<'g, 't> Read<'g, 't> {
-    fn compile<I, T>(tokens: I) -> Result<Vec<Regex>, GlobError>
+    fn compile<I, T>(tokens: I) -> Vec<Regex>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: Clone,
@@ -322,11 +409,11 @@ impl<'g, 't> Read<'g, 't> {
                             token.borrow(),
                             Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree)
                         )
-                    }))?);
+                    })));
                 }
             }
         }
-        Ok(regexes)
+        regexes
     }
 }
 
@@ -464,6 +551,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_glob_with_class_tokens() {
+        Glob::parse("a/[xy]").unwrap();
+        Glob::parse("a/[x-z]").unwrap();
+        Glob::parse("a/[xyi-k]").unwrap();
+        Glob::parse("a/[i-kxy]").unwrap();
+        Glob::parse("a/[!xy]").unwrap();
+        Glob::parse("a/[!x-z]").unwrap();
+        Glob::parse("a/[xy]b/c").unwrap();
+    }
+
+    #[test]
+    fn parse_glob_with_alternative_tokens() {
+        Glob::parse("a/{x?z,y$}b*").unwrap();
+        Glob::parse("a/{???,x$y,frob}b*").unwrap();
+        Glob::parse("a/{???,x$y,frob}b*").unwrap();
+        Glob::parse("a/{???,{x*z,y$}}b*").unwrap();
+    }
+
+    #[test]
     fn reject_glob_with_adjacent_tree_or_zom_tokens() {
         assert!(Glob::parse("***").is_err());
         assert!(Glob::parse("****").is_err());
@@ -536,5 +642,45 @@ mod tests {
         assert_eq!(b"a", captures.get(1).unwrap());
         assert_eq!(b"b-c", captures.get(2).unwrap());
         assert_eq!(b"ext", captures.get(3).unwrap());
+    }
+
+    #[test]
+    fn match_glob_with_class_tokens() {
+        let glob = Glob::parse("a/[xyi-k]/**").unwrap();
+
+        assert!(glob.is_match(Path::new("a/x/file.ext")));
+        assert!(glob.is_match(Path::new("a/y/file.ext")));
+        assert!(glob.is_match(Path::new("a/j/file.ext")));
+
+        assert!(!glob.is_match(Path::new("a/b/file.ext")));
+
+        let path = BytePath::from_path(Path::new("a/i/file.ext"));
+        let captures = glob.captures(&path).unwrap();
+        assert_eq!(b"i", captures.get(1).unwrap());
+    }
+
+    #[test]
+    fn match_glob_with_alternative_tokens() {
+        let glob = Glob::parse("a/{x?z,y$}b/*").unwrap();
+
+        assert!(glob.is_match(Path::new("a/xyzb/file.ext")));
+        assert!(glob.is_match(Path::new("a/yb/file.ext")));
+
+        assert!(!glob.is_match(Path::new("a/xyz/file.ext")));
+        assert!(!glob.is_match(Path::new("a/y/file.ext")));
+        assert!(!glob.is_match(Path::new("a/xyzub/file.ext")));
+
+        let path = BytePath::from_path(Path::new("a/xyzb/file.ext"));
+        let captures = glob.captures(&path).unwrap();
+        assert_eq!(b"xyz", captures.get(1).unwrap());
+    }
+
+    #[test]
+    fn match_glob_with_nested_alternative_tokens() {
+        let glob = Glob::parse("a/{y$,{x?z,?z}}b/*").unwrap();
+
+        let path = BytePath::from_path(Path::new("a/xyzb/file.ext"));
+        let captures = glob.captures(&path).unwrap();
+        assert_eq!(b"xyz", captures.get(1).unwrap());
     }
 }
