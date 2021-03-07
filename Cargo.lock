@@ -225,12 +225,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fool"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ef01739d1587b38a6d60f9900b37a0735bbacf046c411be3978505ef055998b"
-
-[[package]]
 name = "funty"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -357,7 +351,6 @@ dependencies = [
  "dialoguer",
  "faccess",
  "filetime",
- "fool",
  "indicatif",
  "itertools",
  "lazy_static",
