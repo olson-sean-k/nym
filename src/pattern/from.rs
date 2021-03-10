@@ -1,12 +1,8 @@
 use itertools::Itertools;
 use std::path::Path;
 
-use crate::glob::{Entry, Glob, GlobError};
-
-// NOTE: If and when additional from-patterns are supported (such as raw binary
-//       regular expressions), `FromPattern` will no longer be so trivial.
-//       Moreover, glob types like `Entry` and `Captures` will need to be
-//       abstracted away (and `Selector` can be re-introduced).
+use crate::glob::{Entry, Glob};
+use crate::pattern::PatternError;
 
 #[derive(Clone, Debug)]
 pub struct FromPattern<'t> {
@@ -18,15 +14,11 @@ impl<'t> FromPattern<'t> {
         &'a self,
         directory: impl 'a + AsRef<Path>,
         depth: usize,
-    ) -> impl 'a + Iterator<Item = Result<Entry, GlobError>> {
-        self.glob.read(directory, depth).filter_map_ok(|entry| {
-            if entry.file_type().is_file() {
-                Some(entry)
-            }
-            else {
-                None
-            }
-        })
+    ) -> impl 'a + Iterator<Item = Result<Entry, PatternError>> {
+        self.glob
+            .read(directory, depth)
+            .map(|entry| entry.map_err(From::from))
+            .filter_map_ok(|entry| entry.file_type().is_file().then(|| entry))
     }
 }
 

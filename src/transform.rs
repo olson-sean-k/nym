@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::environment::Environment;
-use crate::glob::GlobError;
 use crate::manifest::{Manifest, ManifestError, Routing};
 use crate::pattern::{FromPattern, PatternError, ToPattern};
 
@@ -11,7 +10,7 @@ use crate::pattern::{FromPattern, PatternError, ToPattern};
 #[non_exhaustive]
 pub enum TransformError {
     #[error("failed to traverse directory tree: {0}")]
-    Read(GlobError),
+    Read(PatternError),
     #[error("failed to resolve to-pattern: {0}")]
     PatternResolution(PatternError),
     #[error("failed to insert route: {0}")]
