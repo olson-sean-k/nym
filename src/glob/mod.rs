@@ -6,10 +6,11 @@ use itertools::{EitherOrBoth, Itertools as _};
 use nom::error::ErrorKind;
 use os_str_bytes::OsStrBytes as _;
 use regex::bytes::Regex;
+use smallvec::SmallVec;
 use std::borrow::{Borrow, Cow};
 use std::ffi::OsStr;
 use std::fs::FileType;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
 use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
@@ -52,6 +53,11 @@ impl<'b> BytePath<'b> {
             path
         }
 
+        // NOTE: This doesn't consider platforms where `/` is not a path
+        //       separator or is otherwise supported in file and directory
+        //       names. `/` and `\` are by far the most common separators
+        //       (including mixed-mode operation as seen in Windows), but there
+        //       is precedence for alternatives like `>`, `.`, and `:`.
         #[cfg(not(unix))]
         fn normalize(mut path: Cow<[u8]>) -> Cow<[u8]> {
             use std::path;
@@ -266,29 +272,27 @@ impl<'t> Glob<'t> {
     }
 
     pub fn is_absolute(&self) -> bool {
-        self.path_prefix()
+        self.literal_path_prefix()
             .map(|prefix| prefix.is_absolute())
             .unwrap_or(false)
     }
 
     pub fn has_root(&self) -> bool {
-        self.path_prefix()
+        self.literal_path_prefix()
             .map(|prefix| prefix.has_root())
             .unwrap_or(false)
     }
 
     // TODO: Unix-like globs do not interact well with Windows path prefixes.
     pub fn has_prefix(&self) -> bool {
-        if let Some(prefix) = self.path_prefix() {
-            prefix
-                .components()
-                .next()
-                .map(|component| matches!(component, Component::Prefix(_)))
-                .unwrap_or(false)
-        }
-        else {
-            false
-        }
+        self.literal_path_prefix()
+            .and_then(|prefix| {
+                prefix
+                    .components()
+                    .next()
+                    .map(|component| matches!(component, Component::Prefix(_)))
+            })
+            .unwrap_or(false)
     }
 
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
@@ -308,7 +312,7 @@ impl<'t> Glob<'t> {
         // The directory tree is traversed from `root`, which may include a path
         // prefix from the glob pattern. `Read` patterns are only applied to
         // path components following the `prefix` in `root`.
-        let (prefix, root) = if let Some(prefix) = self.path_prefix() {
+        let (prefix, root) = if let Some(prefix) = self.literal_path_prefix() {
             let root: Cow<'_, Path> = directory.as_ref().join(&prefix).into();
             if prefix.is_absolute() {
                 // Note that absolute paths replace paths with which they are
@@ -336,37 +340,65 @@ impl<'t> Glob<'t> {
         }
     }
 
-    fn non_wildcard_prefix(&self) -> Option<String> {
+    fn literal_path_prefix(&self) -> Option<PathBuf> {
+        #[derive(Clone, Debug)]
+        enum Component<'t> {
+            Separator,
+            Nominal(SmallVec<[&'t Token<'t>; 4]>),
+        }
+
         let mut prefix = String::new();
-        for token in self
-            .tokens
-            .iter()
-            .take_while(|token| matches!(token, Token::Literal(_) | Token::NonTreeSeparator))
+        for component in
+            self.tokens.iter().batching(|tokens| {
+                let first = tokens.next();
+                first.map(|first| {
+                    if matches!(first, Token::NonTreeSeparator) {
+                        Component::Separator
+                    }
+                    else {
+                        Component::Nominal(
+                            Some(first)
+                                .into_iter()
+                                .chain(tokens.take_while_ref(|token| {
+                                    !matches!(token, Token::NonTreeSeparator)
+                                }))
+                                .collect(),
+                        )
+                    }
+                })
+            })
         {
-            match *token {
-                Token::Literal(ref literal) => prefix.push_str(literal.as_ref()),
-                Token::NonTreeSeparator => prefix.push('/'),
-                _ => {}
+            match component {
+                Component::Separator => prefix.push(MAIN_SEPARATOR),
+                Component::Nominal(tokens) => {
+                    // NOTE: Tokens are optimized such that literals are
+                    //       coalesced. These iterations typically operate on a
+                    //       very small number of tokens.
+                    if tokens
+                        .iter()
+                        .any(|token| !matches!(token, Token::Literal(_)))
+                    {
+                        // Abandon this component and construct the prefix if
+                        // non-literal tokens are present.
+                        break;
+                    }
+                    for token in tokens {
+                        match *token {
+                            Token::Literal(ref literal) => prefix.push_str(literal.as_ref()),
+                            // See above; no non-literal tokens should be
+                            // present here.
+                            _ => unreachable!(),
+                        }
+                    }
+                }
             }
         }
         if prefix.is_empty() {
             None
         }
         else {
-            Some(prefix)
+            Some(prefix.into())
         }
-    }
-
-    fn path_prefix(&self) -> Option<PathBuf> {
-        self.non_wildcard_prefix().and_then(|prefix| {
-            let path = PathBuf::from(prefix);
-            if self.tokens.len() > 1 {
-                path.parent().map(|parent| parent.to_path_buf())
-            }
-            else {
-                Some(path)
-            }
-        })
     }
 }
 
@@ -597,6 +629,35 @@ mod tests {
     }
 
     #[test]
+    fn literal_path_prefix() {
+        assert_eq!(
+            Glob::parse("a/b").unwrap().literal_path_prefix(),
+            Some(Path::new("a/b").to_path_buf()),
+        );
+        assert_eq!(
+            Glob::parse("a/*").unwrap().literal_path_prefix(),
+            Some(Path::new("a/").to_path_buf()),
+        );
+        assert_eq!(
+            Glob::parse("a/*b").unwrap().literal_path_prefix(),
+            Some(Path::new("a/").to_path_buf()),
+        );
+        assert_eq!(
+            Glob::parse("a/b*").unwrap().literal_path_prefix(),
+            Some(Path::new("a/").to_path_buf()),
+        );
+        assert_eq!(
+            Glob::parse("a/b/*/c").unwrap().literal_path_prefix(),
+            Some(Path::new("a/b/").to_path_buf()),
+        );
+
+        assert!(Glob::parse("**").unwrap().literal_path_prefix().is_none());
+        assert!(Glob::parse("a*").unwrap().literal_path_prefix().is_none());
+        assert!(Glob::parse("*/b").unwrap().literal_path_prefix().is_none());
+        assert!(Glob::parse("a?/b").unwrap().literal_path_prefix().is_none());
+    }
+
+    #[test]
     fn match_glob_with_tree_tokens() {
         let glob = Glob::parse("a/**/b").unwrap();
 
@@ -612,7 +673,7 @@ mod tests {
             glob.captures(&BytePath::from_path(Path::new("a/x/y/z/b")))
                 .unwrap()
                 .get(1)
-                .unwrap()
+                .unwrap(),
         );
     }
 
