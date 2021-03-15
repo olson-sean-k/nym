@@ -9,7 +9,7 @@ use regex::bytes::Regex;
 use std::borrow::{Borrow, Cow};
 use std::ffi::OsStr;
 use std::fs::FileType;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
 use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
@@ -52,6 +52,11 @@ impl<'b> BytePath<'b> {
             path
         }
 
+        // NOTE: This doesn't consider platforms where `/` is not a path
+        //       separator or is otherwise supported in file and directory
+        //       names. `/` and `\` are by far the most common separators
+        //       (including mixed-mode operation as seen in Windows), but there
+        //       is precedence for alternatives like `>`, `.`, and `:`.
         #[cfg(not(unix))]
         fn normalize(mut path: Cow<[u8]>) -> Cow<[u8]> {
             use std::path;
@@ -336,7 +341,7 @@ impl<'t> Glob<'t> {
         }
     }
 
-    fn non_wildcard_prefix(&self) -> Option<String> {
+    fn literal_prefix(&self) -> Option<String> {
         let mut prefix = String::new();
         for token in self
             .tokens
@@ -345,7 +350,7 @@ impl<'t> Glob<'t> {
         {
             match *token {
                 Token::Literal(ref literal) => prefix.push_str(literal.as_ref()),
-                Token::NonTreeSeparator => prefix.push('/'),
+                Token::NonTreeSeparator => prefix.push(MAIN_SEPARATOR),
                 _ => {}
             }
         }
@@ -358,9 +363,15 @@ impl<'t> Glob<'t> {
     }
 
     fn path_prefix(&self) -> Option<PathBuf> {
-        self.non_wildcard_prefix().and_then(|prefix| {
+        self.literal_prefix().and_then(|prefix| {
             let path = PathBuf::from(prefix);
-            if self.tokens.len() > 1 {
+            if self
+                .tokens
+                .iter()
+                .any(|token| !matches!(token, Token::Literal(_) | Token::NonTreeSeparator))
+            {
+                // If the literal prefix is followed by non-literal tokens, then
+                // the terminating path component is incomplete and is removed.
                 path.parent().map(|parent| parent.to_path_buf())
             }
             else {
