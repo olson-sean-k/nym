@@ -283,18 +283,6 @@ impl<'t> Glob<'t> {
             .unwrap_or(false)
     }
 
-    // TODO: Unix-like globs do not interact well with Windows path prefixes.
-    pub fn has_prefix(&self) -> bool {
-        self.literal_path_prefix()
-            .and_then(|prefix| {
-                prefix
-                    .components()
-                    .next()
-                    .map(|component| matches!(component, Component::Prefix(_)))
-            })
-            .unwrap_or(false)
-    }
-
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
         let path = BytePath::from_path(path.as_ref());
         self.regex.is_match(&path.path)
