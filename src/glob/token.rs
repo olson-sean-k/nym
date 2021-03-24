@@ -30,10 +30,6 @@ impl From<(char, char)> for Archetype {
 #[derive(Clone, Debug)]
 pub enum Wildcard {
     One,
-    Class {
-        is_negated: bool,
-        archetypes: Vec<Archetype>,
-    },
     ZeroOrMore(Evaluation),
     Tree,
 }
@@ -41,6 +37,10 @@ pub enum Wildcard {
 #[derive(Clone, Debug)]
 pub enum Token<'t> {
     Alternative(Vec<Vec<Token<'t>>>),
+    Class {
+        is_negated: bool,
+        archetypes: Vec<Archetype>,
+    },
     Literal(Cow<'t, str>),
     NonTreeSeparator,
     Wildcard(Wildcard),
@@ -55,6 +55,13 @@ impl<'t> Token<'t> {
                     .map(|tokens| tokens.into_iter().map(|token| token.into_owned()).collect())
                     .collect(),
             ),
+            Token::Class {
+                is_negated,
+                archetypes,
+            } => Token::Class {
+                is_negated,
+                archetypes,
+            },
             Token::Literal(literal) => literal.into_owned().into(),
             Token::NonTreeSeparator => Token::NonTreeSeparator,
             Token::Wildcard(wildcard) => Token::Wildcard(wildcard),
@@ -136,7 +143,47 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
         )(input)
     }
 
+    fn separator<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
+    where
+        E: ParseError<&'i str>,
+    {
+        combinator::value(Token::NonTreeSeparator, bytes::tag("/"))(input)
+    }
+
     fn wildcard<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
+    where
+        E: ParseError<&'i str>,
+    {
+        branch::alt((
+            combinator::map(no_adjacent_tree(bytes::tag("?")), |_| {
+                Token::from(Wildcard::One)
+            }),
+            combinator::map(
+                sequence::delimited(
+                    branch::alt((bytes::tag("/"), bytes::tag(""))),
+                    bytes::tag("**"),
+                    branch::alt((bytes::tag("/"), combinator::eof)),
+                ),
+                |_| Wildcard::Tree.into(),
+            ),
+            combinator::map(
+                sequence::terminated(
+                    bytes::tag("*"),
+                    branch::alt((combinator::peek(bytes::is_not("*$")), combinator::eof)),
+                ),
+                |_| Wildcard::ZeroOrMore(Evaluation::Eager).into(),
+            ),
+            combinator::map(
+                sequence::terminated(
+                    bytes::tag("$"),
+                    branch::alt((combinator::peek(bytes::is_not("*$")), combinator::eof)),
+                ),
+                |_| Wildcard::ZeroOrMore(Evaluation::Lazy).into(),
+            ),
+        ))(input)
+    }
+
+    fn class<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
     where
         E: ParseError<&'i str>,
     {
@@ -164,47 +211,17 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
             )))(input)
         }
 
-        branch::alt((
-            combinator::map(no_adjacent_tree(bytes::tag("?")), |_| {
-                Token::from(Wildcard::One)
-            }),
-            combinator::map(
-                sequence::delimited(
-                    branch::alt((bytes::tag("/"), bytes::tag(""))),
-                    bytes::tag("**"),
-                    branch::alt((bytes::tag("/"), combinator::eof)),
-                ),
-                |_| Wildcard::Tree.into(),
+        combinator::map(
+            sequence::delimited(
+                bytes::tag("["),
+                sequence::tuple((combinator::opt(bytes::tag("!")), archetypes)),
+                bytes::tag("]"),
             ),
-            combinator::map(
-                sequence::terminated(
-                    bytes::tag("*"),
-                    branch::alt((combinator::peek(bytes::is_not("*$")), combinator::eof)),
-                ),
-                |_| Wildcard::ZeroOrMore(Evaluation::Eager).into(),
-            ),
-            combinator::map(
-                sequence::terminated(
-                    bytes::tag("$"),
-                    branch::alt((combinator::peek(bytes::is_not("*$")), combinator::eof)),
-                ),
-                |_| Wildcard::ZeroOrMore(Evaluation::Lazy).into(),
-            ),
-            combinator::map(
-                sequence::delimited(
-                    bytes::tag("["),
-                    sequence::tuple((combinator::opt(bytes::tag("!")), archetypes)),
-                    bytes::tag("]"),
-                ),
-                |(negation, archetypes)| {
-                    Wildcard::Class {
-                        is_negated: negation.is_some(),
-                        archetypes,
-                    }
-                    .into()
-                },
-            ),
-        ))(input)
+            |(negation, archetypes)| Token::Class {
+                is_negated: negation.is_some(),
+                archetypes,
+            },
+        )(input)
     }
 
     fn alternative<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
@@ -221,18 +238,17 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
         )(input)
     }
 
-    fn separator<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
-    where
-        E: ParseError<&'i str>,
-    {
-        combinator::value(Token::NonTreeSeparator, bytes::tag("/"))(input)
-    }
-
     fn glob<'i, E>(input: &'i str) -> IResult<&'i str, Vec<Token>, E>
     where
         E: ParseError<&'i str>,
     {
-        multi::many1(branch::alt((literal, alternative, wildcard, separator)))(input)
+        multi::many1(branch::alt((
+            literal,
+            alternative,
+            wildcard,
+            class,
+            separator,
+        )))(input)
     }
 
     combinator::all_consuming(glob)(text)

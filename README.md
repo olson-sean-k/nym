@@ -64,16 +64,26 @@ The exactly-one wildcard `?` matches any single character **except path
 separators**. Exactly-one wildcards do not group, so a pattern of contiguous
 wildcards such as `???` form distinct captures for each `?` wildcard.
 
-The character class wildcard matches any single character from a group of
-literals and ranges **except path separators**. Classes are delimited by square
-brackets `[...]`. Individual character literals are specified as is, such as
-`[ab]` to match either `a` or `b`. Character ranges are formed from two
-characters seperated by a hyphen, such as `[x-z]` to match `x`, `y`, or `z`.
+### Character Classes
+
+Character classes match any single character from a group of literals and ranges
+**except path separators**. Classes are delimited by square brackets `[...]`.
+Individual character literals are specified as is, such as `[ab]` to match
+either `a` or `b`. Character ranges are formed from two characters seperated by
+a hyphen, such as `[x-z]` to match `x`, `y`, or `z`.
+
+Any number of character literals and ranges can be used within a single
+character class. For example, `[qa-cX-Z]` matches any of `q`, `a`, `b`, `c`,
+`X`, `Y`, or `Z`.
 
 Character classes may be negated by including an exclamation mark `!` at the
 beginning of the class pattern. For example, `[!a]` matches any character except
-for `a`. Note that character classes can also be used to escape metacharacters
-like `*`, `$`, etc., though globs also support escaping via a backslash `\`.
+for `a`.
+
+Note that character classes can also be used to escape metacharacters like `*`,
+`$`, etc., though globs also support escaping via a backslash `\`. To match the
+control characters `[`, `]`, and `-` within a character class, they must be
+escaped via a backslash, such as `[a\-]` to match `a` or `-`.
 
 ### Alternatives
 

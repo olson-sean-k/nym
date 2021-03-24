@@ -189,8 +189,10 @@ impl<'t> Glob<'t> {
 
             use crate::glob::token::Archetype::{Character, Range};
             use crate::glob::token::Evaluation::{Eager, Lazy};
-            use crate::glob::token::Token::{Alternative, Literal, NonTreeSeparator, Wildcard};
-            use crate::glob::token::Wildcard::{Class, One, Tree, ZeroOrMore};
+            use crate::glob::token::Token::{
+                Alternative, Class, Literal, NonTreeSeparator, Wildcard,
+            };
+            use crate::glob::token::Wildcard::{One, Tree, ZeroOrMore};
 
             for token in tokens.into_iter().with_position() {
                 match token.interior_borrow().lift() {
@@ -215,10 +217,10 @@ impl<'t> Glob<'t> {
                     }
                     (
                         _,
-                        Wildcard(Class {
+                        Class {
                             is_negated,
                             archetypes,
-                        }),
+                        },
                     ) => {
                         grouping.push_with(pattern, || {
                             let mut pattern = String::new();
