@@ -202,7 +202,13 @@ impl<'t> Glob<'t> {
                         }
                     }
                     (_, NonTreeSeparator) => pattern.push_str(&escape(b'/')),
-                    (_, Alternative(alternatives)) => {
+                    (
+                        _,
+                        Alternative {
+                            is_negated,
+                            alternatives,
+                        },
+                    ) => {
                         let encodings: Vec<_> = alternatives
                             .iter()
                             .map(|tokens| {
@@ -213,7 +219,18 @@ impl<'t> Glob<'t> {
                                 pattern
                             })
                             .collect();
-                        grouping.push_str(pattern, &encodings.join("|"));
+                        if *is_negated {
+                            // TODO: Migrate to `fancy-regex` and use look-ahead to encode a
+                            //       negated group.
+                            todo!(
+                                "negated alternatives (zero-or-more-except) require features not \
+                                 available in Nym's regular expression engine and are not yet \
+                                 available"
+                            );
+                        }
+                        else {
+                            grouping.push_str(pattern, &encodings.join("|"));
+                        }
                     }
                     (
                         _,

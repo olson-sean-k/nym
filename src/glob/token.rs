@@ -36,7 +36,10 @@ pub enum Wildcard {
 
 #[derive(Clone, Debug)]
 pub enum Token<'t> {
-    Alternative(Vec<Vec<Token<'t>>>),
+    Alternative {
+        is_negated: bool,
+        alternatives: Vec<Vec<Token<'t>>>,
+    },
     Class {
         is_negated: bool,
         archetypes: Vec<Archetype>,
@@ -49,12 +52,16 @@ pub enum Token<'t> {
 impl<'t> Token<'t> {
     pub fn into_owned(self) -> Token<'static> {
         match self {
-            Token::Alternative(alternatives) => Token::Alternative(
-                alternatives
+            Token::Alternative {
+                is_negated,
+                alternatives,
+            } => Token::Alternative {
+                is_negated,
+                alternatives: alternatives
                     .into_iter()
                     .map(|tokens| tokens.into_iter().map(|token| token.into_owned()).collect())
                     .collect(),
-            ),
+            },
             Token::Class {
                 is_negated,
                 archetypes,
@@ -228,13 +235,19 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
     where
         E: ParseError<&'i str>,
     {
-        sequence::delimited(
-            bytes::tag("{"),
-            combinator::map(
-                multi::separated_list1(bytes::tag(","), glob),
-                Token::Alternative,
+        combinator::map(
+            sequence::delimited(
+                bytes::tag("{"),
+                sequence::tuple((
+                    combinator::opt(bytes::tag("!")),
+                    multi::separated_list1(bytes::tag(","), glob),
+                )),
+                bytes::tag("}"),
             ),
-            bytes::tag("}"),
+            |(negation, alternatives)| Token::Alternative {
+                is_negated: negation.is_some(),
+                alternatives,
+            },
         )(input)
     }
 
