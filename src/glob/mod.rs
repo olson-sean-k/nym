@@ -151,18 +151,18 @@ impl<'t> Glob<'t> {
 
         impl Grouping {
             pub fn push_str(&self, pattern: &mut String, encoding: &str) {
-                self.push_with(pattern, |pattern| pattern.push_str(encoding));
+                self.push_with(pattern, || encoding.into());
             }
 
-            pub fn push_with<F>(&self, pattern: &mut String, f: F)
+            pub fn push_with<'p, F>(&self, pattern: &mut String, f: F)
             where
-                F: Fn(&mut String),
+                F: Fn() -> Cow<'p, str>,
             {
                 match self {
                     Grouping::Capture => pattern.push('('),
                     Grouping::NonCapture => pattern.push_str("(:?"),
                 }
-                f(pattern);
+                pattern.push_str(f().as_ref());
                 pattern.push(')');
             }
         }
@@ -220,7 +220,8 @@ impl<'t> Glob<'t> {
                             archetypes,
                         }),
                     ) => {
-                        grouping.push_with(pattern, |pattern| {
+                        grouping.push_with(pattern, || {
+                            let mut pattern = String::new();
                             pattern.push('[');
                             if *is_negated {
                                 pattern.push('^');
@@ -242,6 +243,7 @@ impl<'t> Glob<'t> {
                                 }
                             }
                             pattern.push_str("&&[^/]]");
+                            pattern.into()
                         });
                     }
                     (_, Wildcard(One)) => grouping.push_str(pattern, "[^/]"),
