@@ -144,16 +144,23 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
         where
             E: ParseError<&'i str>,
         {
+            let escaped_character = |input| {
+                branch::alt((
+                    character::none_of("[]-\\"),
+                    branch::alt((
+                        combinator::value('[', bytes::tag("\\[")),
+                        combinator::value(']', bytes::tag("\\]")),
+                        combinator::value('-', bytes::tag("\\-")),
+                    )),
+                ))(input)
+            };
+
             multi::many1(branch::alt((
                 combinator::map(
-                    sequence::separated_pair(
-                        character::none_of("]"),
-                        bytes::tag("-"),
-                        character::none_of("]"),
-                    ),
+                    sequence::separated_pair(escaped_character, bytes::tag("-"), escaped_character),
                     Archetype::from,
                 ),
-                combinator::map(character::none_of("]"), Archetype::from),
+                combinator::map(escaped_character, Archetype::from),
             )))(input)
         }
 

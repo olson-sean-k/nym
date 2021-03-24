@@ -167,6 +167,17 @@ impl<'t> Glob<'t> {
             }
         }
 
+        fn escape(byte: u8) -> String {
+            const ASCII_TERMINATOR: u8 = 0x7F;
+
+            if byte <= ASCII_TERMINATOR {
+                regex::escape(&(byte as char).to_string())
+            }
+            else {
+                format!("\\x{:02x}", byte)
+            }
+        }
+
         fn encode<'t, T>(
             grouping: Grouping,
             pattern: &mut String,
@@ -216,7 +227,13 @@ impl<'t> Glob<'t> {
                             }
                             for archetype in archetypes {
                                 match archetype {
-                                    Character(literal) => pattern.push(*literal),
+                                    Character(literal) => {
+                                        let mut bytes = [0u8; 4];
+                                        literal.encode_utf8(&mut bytes);
+                                        for &byte in &bytes {
+                                            pattern.push_str(&escape(byte))
+                                        }
+                                    }
                                     Range(left, right) => {
                                         pattern.push(*left);
                                         pattern.push('-');
@@ -501,17 +518,6 @@ impl<'g, 't> Iterator for Read<'g, 't> {
     }
 }
 
-fn escape(byte: u8) -> String {
-    const ASCII_TERMINATOR: u8 = 0x7F;
-
-    if byte <= ASCII_TERMINATOR {
-        regex::escape(&(byte as char).to_string())
-    }
-    else {
-        format!("\\x{:02x}", byte)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -590,6 +596,42 @@ mod tests {
     }
 
     #[test]
+    fn parse_glob_with_literal_escaped_wildcard_tokens() {
+        Glob::parse("a/b\\?/c").unwrap();
+        Glob::parse("a/b\\$/c").unwrap();
+        Glob::parse("a/b\\*/c").unwrap();
+        Glob::parse("a/b\\*\\*/c").unwrap();
+    }
+
+    #[test]
+    fn parse_glob_with_class_escaped_wildcard_tokens() {
+        Glob::parse("a/b[?]/c").unwrap();
+        Glob::parse("a/b[$]/c").unwrap();
+        Glob::parse("a/b[*]/c").unwrap();
+        Glob::parse("a/b[*][*]/c").unwrap();
+    }
+
+    #[test]
+    fn parse_glob_with_literal_escaped_alternative_tokens() {
+        Glob::parse("a/\\{\\}/c").unwrap();
+        Glob::parse("a/{x,y\\,,z}/c").unwrap();
+    }
+
+    #[test]
+    fn parse_glob_with_class_escaped_alternative_tokens() {
+        Glob::parse("a/[{][}]/c").unwrap();
+        Glob::parse("a/{x,y[,],z}/c").unwrap();
+    }
+
+    #[test]
+    fn parse_glob_with_literal_escaped_class_tokens() {
+        Glob::parse("a/\\[a-z\\]/c").unwrap();
+        Glob::parse("a/[\\[]/c").unwrap();
+        Glob::parse("a/[\\]]/c").unwrap();
+        Glob::parse("a/[a\\-z]/c").unwrap();
+    }
+
+    #[test]
     fn reject_glob_with_adjacent_tree_or_zom_tokens() {
         assert!(Glob::parse("***").is_err());
         assert!(Glob::parse("****").is_err());
@@ -614,6 +656,19 @@ mod tests {
         assert!(Glob::parse("?**?").is_err());
         assert!(Glob::parse("?*?**").is_err());
         assert!(Glob::parse("**/**?/**").is_err());
+    }
+
+    #[test]
+    fn reject_glob_with_unescaped_meta_characters_in_class_tokens() {
+        assert!(Glob::parse("a/[a-z-]/c").is_err());
+        assert!(Glob::parse("a/[-a-z]/c").is_err());
+        assert!(Glob::parse("a/[-]/c").is_err());
+        // NOTE: Without special attention to escaping and character parsing,
+        //       this could be mistakenly interpreted as an empty range over the
+        //       character `-`. This should be rejected.
+        assert!(Glob::parse("a/[---]/c").is_err());
+        assert!(Glob::parse("a/[[]/c").is_err());
+        assert!(Glob::parse("a/[]]/c").is_err());
     }
 
     #[test]
@@ -709,6 +764,21 @@ mod tests {
     }
 
     #[test]
+    fn match_glob_with_literal_escaped_class_tokens() {
+        let glob = Glob::parse("a/[\\[\\]\\-]/**").unwrap();
+
+        assert!(glob.is_match(Path::new("a/[/file.ext")));
+        assert!(glob.is_match(Path::new("a/]/file.ext")));
+        assert!(glob.is_match(Path::new("a/-/file.ext")));
+
+        assert!(!glob.is_match(Path::new("a/b/file.ext")));
+
+        let path = BytePath::from_path(Path::new("a/[/file.ext"));
+        let captures = glob.captures(&path).unwrap();
+        assert_eq!(b"[", captures.get(1).unwrap());
+    }
+
+    #[test]
     fn match_glob_with_alternative_tokens() {
         let glob = Glob::parse("a/{x?z,y$}b/*").unwrap();
 
@@ -731,5 +801,16 @@ mod tests {
         let path = BytePath::from_path(Path::new("a/xyzb/file.ext"));
         let captures = glob.captures(&path).unwrap();
         assert_eq!(b"xyz", captures.get(1).unwrap());
+    }
+
+    #[test]
+    fn match_glob_with_alternative_tree_tokens() {
+        let glob = Glob::parse("a/{foo,bar,**/baz}/qux").unwrap();
+
+        assert!(glob.is_match(Path::new("a/foo/qux")));
+        assert!(glob.is_match(Path::new("a/foo/baz/qux")));
+        assert!(glob.is_match(Path::new("a/foo/bar/baz/qux")));
+
+        assert!(!glob.is_match(Path::new("a/foo/bar/qux")));
     }
 }
