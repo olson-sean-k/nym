@@ -94,6 +94,10 @@ impl From<Wildcard> for Token<'static> {
 //       This should be fixed, but note that solutions that introduce invalid
 //       token sequences should be avoided! If possible, arbitrary token
 //       sequences should always be valid.
+// NOTE: Both forward and back slashes are disallowed in non-separator tokens
+//       like literals and character classes. This means escaping back slashes
+//       is not possible (despite common conventions). This avoids non-separator
+//       tokens parsing over directory boundaries (in particular on Windows).
 pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
     use nom::bytes::complete as bytes;
     use nom::character::complete as character;
@@ -134,7 +138,6 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
                         combinator::value("{", bytes::tag("{")),
                         combinator::value("}", bytes::tag("}")),
                         combinator::value(",", bytes::tag(",")),
-                        combinator::value("\\", bytes::tag("\\")),
                     )),
                 ),
                 |text: &str| !text.is_empty(),
