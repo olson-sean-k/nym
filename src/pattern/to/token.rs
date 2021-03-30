@@ -25,6 +25,12 @@ impl From<usize> for Identifier<'static> {
     }
 }
 
+impl<'t> From<Cow<'t, str>> for Identifier<'t> {
+    fn from(name: Cow<'t, str>) -> Self {
+        Identifier::Name(name)
+    }
+}
+
 impl<'t> From<&'t str> for Identifier<'t> {
     fn from(name: &'t str) -> Self {
         Identifier::Name(name.into())
@@ -221,12 +227,42 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         sequence::delimited(character::char('['), parser, character::char(']'))
     }
 
-    // TODO: Support escaping captures.
+    fn escaped<'i, E, F>(parser: F) -> impl FnMut(&'i str) -> IResult<&'i str, String, E>
+    where
+        E: ParseError<&'i str>,
+        F: Parser<&'i str, &'i str, E>,
+    {
+        combinator::verify(
+            bytes::escaped_transform(
+                parser,
+                '\\',
+                branch::alt((
+                    combinator::value("[", bytes::tag("[")),
+                    combinator::value("]", bytes::tag("]")),
+                    combinator::value("{", bytes::tag("{")),
+                    combinator::value("}", bytes::tag("}")),
+                    combinator::value("\\", bytes::tag("\\")),
+                )),
+            ),
+            |text: &str| !text.is_empty(),
+        )
+    }
+
+    fn argument<'i, E>(input: &'i str) -> IResult<&'i str, Cow<'i, str>, E>
+    where
+        E: ParseError<&'i str>,
+    {
+        bracketed(branch::alt((
+            combinator::map(escaped(bytes::is_not("[]\\")), Cow::from),
+            combinator::map(bytes::tag(""), Cow::from),
+        )))(input)
+    }
+
     fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
     where
         E: ParseError<&'i str>,
     {
-        combinator::map(bytes::is_not("{"), From::from)(input)
+        combinator::map(escaped(bytes::is_not("{}\\")), Token::from)(input)
     }
 
     fn identifier<'i, E>(input: &'i str) -> IResult<&'i str, Identifier, E>
@@ -239,10 +275,7 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
                 |text: &'i str| usize::from_str_radix(text, 10).map(Identifier::from),
             ),
             combinator::map(
-                sequence::preceded(
-                    character::char('@'),
-                    bracketed(branch::alt((bytes::is_not("]"), bytes::tag("")))),
-                ),
+                sequence::preceded(character::char('@'), argument),
                 Identifier::from,
             ),
             combinator::value(Identifier::from(0), character::space0),
@@ -253,26 +286,16 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
     where
         E: ParseError<&'i str>,
     {
-        fn literal<'i, E>(input: &'i str) -> IResult<&'i str, Cow<'i, str>, E>
-        where
-            E: ParseError<&'i str>,
-        {
-            combinator::map(
-                bracketed(branch::alt((bytes::is_not("]"), bytes::tag("")))),
-                Cow::from,
-            )(input)
-        }
-
         fn non_empty<'i, E>(input: &'i str) -> IResult<&'i str, NonEmptyCase<'i>, E>
         where
             E: ParseError<&'i str>,
         {
             branch::alt((
                 combinator::map(
-                    sequence::separated_pair(literal, bytes::tag(","), literal),
+                    sequence::separated_pair(argument, bytes::tag(","), argument),
                     |(prefix, postfix)| NonEmptyCase::Surround { prefix, postfix },
                 ),
-                combinator::map(literal, NonEmptyCase::Literal),
+                combinator::map(argument, NonEmptyCase::Literal),
             ))(input)
         }
 
@@ -282,7 +305,7 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
                 sequence::separated_pair(
                     combinator::opt(non_empty),
                     bytes::tag(":"),
-                    combinator::opt(combinator::map(literal, EmptyCase)),
+                    combinator::opt(combinator::map(argument, EmptyCase)),
                 ),
             ),
             |(non_empty, empty)| Condition { non_empty, empty },
@@ -308,7 +331,14 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
                             combinator::map_res(character::digit1, |text: &'i str| {
                                 usize::from_str_radix(text, 10)
                             }),
-                            bracketed(character::anychar),
+                            bracketed(branch::alt((
+                                character::none_of("[]\\"),
+                                branch::alt((
+                                    combinator::value('[', bytes::tag("\\[")),
+                                    combinator::value(']', bytes::tag("\\]")),
+                                    combinator::value('\\', bytes::tag("\\\\")),
+                                )),
+                            ))),
                         )),
                         |(alignment, width, shim)| Formatter::Pad {
                             shim,

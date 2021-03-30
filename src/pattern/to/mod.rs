@@ -58,8 +58,7 @@ impl<'t> ToPattern<'t> {
                             let capture = match identifier {
                                 Identifier::Index(ref index) => captures.get(*index),
                                 // TODO: Get captures by name when using
-                                //       from-patterns that support it. See
-                                //       `pattern::from`.
+                                //       from-patterns that support it.
                                 Identifier::Name(_) => None,
                             }
                             // Do not include empty captures. Captures that do
@@ -180,6 +179,22 @@ mod tests {
     #[test]
     fn parse_to_pattern_condition_formatter() {
         ToPattern::parse("{#1?[prefix],[postfix]:[none]|>4[0]}").unwrap();
+    }
+
+    #[test]
+    fn parse_to_pattern_with_escaped_literal() {
+        ToPattern::parse("a/b/file\\{0\\}.ext").unwrap();
+        ToPattern::parse("a/b/file\\[0\\].ext").unwrap();
+        // NOTE: Escaping square brackets is not necessary in literals.
+        ToPattern::parse("a/b/file[0].ext").unwrap();
+    }
+
+    #[test]
+    fn parse_to_pattern_with_escaped_argument() {
+        ToPattern::parse("{#1?[\\[\\]]:}").unwrap();
+        // NOTE: Escaping curly braces is not necessary in arguments.
+        ToPattern::parse("{#1?[{}]:[\\{\\}]}").unwrap();
+        ToPattern::parse("{@[capture\\[0\\]]}").unwrap();
     }
 
     #[test]
