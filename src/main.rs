@@ -33,9 +33,7 @@ impl Program {
                 ref options,
                 ref transform,
                 ..
-            } => with_transform(options, transform, |environment, from, to| {
-                actuate::<Copy>(self.options(), environment, from, to)
-            }),
+            } => actuate::<Copy>(options, transform),
             // TODO: Use `console` and the `ui` module to handle output.
             Command::Find {
                 ref options,
@@ -57,29 +55,19 @@ impl Program {
                     ref options,
                     ref transform,
                     ..
-                } => with_transform(options, transform, |environment, from, to| {
-                    actuate::<HardLink>(self.options(), environment, from, to)
-                }),
+                } => actuate::<HardLink>(options, transform),
                 Link::Soft {
                     ref options,
                     ref transform,
                     ..
-                } => with_transform(options, transform, |environment, from, to| {
-                    actuate::<SoftLink>(self.options(), environment, from, to)
-                }),
+                } => actuate::<SoftLink>(options, transform),
             },
             Command::Move {
                 ref options,
                 ref transform,
                 ..
-            } => with_transform(options, transform, |environment, from, to| {
-                actuate::<Move>(self.options(), environment, from, to)
-            }),
+            } => actuate::<Move>(options, transform),
         }
-    }
-
-    fn options(&self) -> &CommonOptions {
-        self.command.options()
     }
 }
 
@@ -154,27 +142,6 @@ enum Command {
     },
 }
 
-impl Command {
-    fn options(&self) -> &CommonOptions {
-        match self {
-            Command::Append {
-                options: TransformOptions { ref options, .. },
-                ..
-            } => options,
-            Command::Copy {
-                options: TransformOptions { ref options, .. },
-                ..
-            } => options,
-            Command::Find { ref options, .. } => options,
-            Command::Link { ref link, .. } => link.options(),
-            Command::Move {
-                options: TransformOptions { ref options, .. },
-                ..
-            } => options,
-        }
-    }
-}
-
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 enum Link {
@@ -192,21 +159,6 @@ enum Link {
         #[structopt(flatten)]
         options: TransformOptions,
     },
-}
-
-impl Link {
-    fn options(&self) -> &CommonOptions {
-        match self {
-            Link::Hard {
-                options: TransformOptions { ref options, .. },
-                ..
-            } => options,
-            Link::Soft {
-                options: TransformOptions { ref options, .. },
-                ..
-            } => options,
-        }
-    }
 }
 
 /// Transformation.
@@ -227,35 +179,22 @@ impl UnparsedTransform {
     }
 }
 
-fn with_transform<T, F>(
-    options: &TransformOptions,
-    transform: &UnparsedTransform,
-    mut f: F,
-) -> Result<T, Error>
+fn actuate<A>(options: &TransformOptions, transform: &UnparsedTransform) -> Result<(), Error>
 where
-    F: FnMut(Environment, FromPattern, ToPattern) -> Result<T, Error>,
+    A: Label + Operation,
 {
     let environment = Environment::new(Policy {
         parents: options.parents,
         overwrite: options.overwrite,
     });
     let (from, to) = transform.parse()?;
-    f(environment, from, to)
-}
+    let options = &options.options;
 
-fn actuate<A>(
-    options: &CommonOptions,
-    environment: Environment,
-    from: FromPattern<'_>,
-    to: ToPattern<'_>,
-) -> Result<(), Error>
-where
-    A: Label + Operation,
-{
     let terminal = Term::stderr();
     let transform = environment.transform(from, to);
     let actuator = environment.actuator();
     let manifest: Manifest<A::Routing> = transform.read(&options.directory, options.depth + 1)?;
+
     if !options.quiet {
         manifest.print(&terminal)?;
         ui::print_warning(&terminal, DISCLAIMER)?;
