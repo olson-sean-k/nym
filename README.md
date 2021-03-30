@@ -12,28 +12,44 @@ using patterns. It is inspired by and very loosely based upon `mmv`.
 
 ## Usage
 
-Nym commands are formed from flags, options, and an actuator followed by a
-transform. An actuator is a file operation like `append`, `copy`, `link`, or
-`move`. A transform is a from-pattern used to match source files and a
-to-pattern used to resolve destination paths.
+Nym commands are formed from patterns and options. Most commands are transforms
+composed of both a from-pattern to match source files and a to-pattern to
+resolve destination paths. Transforms include the `append`, `copy`, `link` and
+`move` commands. Some commands, such as `find`, use only a from-pattern.
 
 The following command copies all files in the working directory tree to a
 neighboring file with an appended `.bak` extension:
 
 ```shell
-nym copy '**' '{#1}.bak'
+nym copy '**' '{#0}.bak'
 ```
 
-Here, `copy` is the actuator, `**` is the from-pattern, and `{#1}.bak` is the
-to-pattern. In most shells, patterns must be escaped to avoid interacting with
-features like expansion. Quoting patterns usually prevents these unwanted
-interactions.
+Here, `copy` is the sub-command (also known as an actuator), `**` is the
+from-pattern, and `{#0}.bak` is the to-pattern. Note that in most shells
+patterns must be escaped to avoid interacting with features like expansion.
+Quoting patterns usually prevents these unwanted interactions.
+
+The following command finds all files beneath a `src` directory with either the
+`.go` or `.rs` extension:
+
+```shell
+nym find '**/src/**/*.{go,rs}'
+```
 
 ## From-Patterns
 
-From-patterns match source files to actuate using Unix-like globs. Globs must
-use `/` as a path separator. Separators are normalized across platforms; glob
+From-patterns match source files to actuate using Unix-like globs. These globs
+**always** use forward slash `/` as a path separator and completely disallow
+back slash `\` literals. Separators are normalized across platforms; glob
 patterns can match paths on Windows, for example.
+
+Note that on Windows complex UNC paths or paths with other prefixes can be used
+via the `--tree`/`-C` option. For example, the following command copies all
+files from the UNC share path `\\server\share\src`:
+
+```shell
+nym copy --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
+```
 
 Globs resemble literal paths, but additionally support wildcards, character
 classes, and alternatives.
@@ -43,12 +59,12 @@ classes, and alternatives.
 Globs support wildcards that match different fragments of paths and provide
 capture text that can be used in to-patterns.
 
-The tree wildcard `**` matches zero or more sub-directories. This is the only
-way to match against arbitrary directories; all other wildcards do **not** match
-across directory boundaries. When a tree wildcard participates in a match and
-does not terminate the pattern, its capture includes a trailing path separator.
-If a tree wildcard does not participate in a match, its capture is an empty
-string with no path separator. Tree wildcards must be delimited by path
+The tree wildcard `**` matches zero or more sub-directories. **This is the only
+way to match against arbitrary directories**; all other wildcards do **not**
+match across directory boundaries. When a tree wildcard participates in a match
+and does not terminate the pattern, its capture includes a trailing path
+separator.  If a tree wildcard does not participate in a match, its capture is
+an empty string with no path separator. Tree wildcards must be delimited by path
 separators or nothing (such as the beginning and/or end of a pattern). If a glob
 consists solely of a tree wildcard, then it matches all files in the working
 directory tree.
