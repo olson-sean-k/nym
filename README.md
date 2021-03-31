@@ -3,8 +3,8 @@
 </div>
 <br/>
 
-**Nym** is a cross-platform library and command line tool for manipulating files
-using patterns. It is inspired by and very loosely based upon `mmv`.
+**Nym** is a cross-platform library and command line interface for manipulating
+files using patterns. It is inspired by and very loosely based upon `mmv`.
 
 [![GitHub](https://img.shields.io/badge/GitHub-olson--sean--k/nym-8da0cb?logo=github&style=for-the-badge)](https://github.com/olson-sean-k/nym)
 [![docs.rs](https://img.shields.io/badge/docs.rs-nym-66c2a5?logo=rust&style=for-the-badge)](https://docs.rs/nym)
@@ -12,13 +12,19 @@ using patterns. It is inspired by and very loosely based upon `mmv`.
 
 ## Usage
 
-Nym commands are formed from patterns and options. Most commands are transforms
-composed of both a from-pattern to match source files and a to-pattern to
-resolve destination paths. Transforms include the `append`, `copy`, `link` and
-`move` commands. Some commands, such as `find`, use only a from-pattern.
+Nym commands are formed from flags, options, and patterns. Most commands are
+transforms composed of both a from-pattern to match source files and a
+to-pattern to resolve destination paths. Transforms include the `append`,
+`copy`, `link` and `move` commands. Some commands, such as `find`, use only a
+from-pattern.
+
+Nym operates exclusively on files (with the exception of the `--parent`/`-p`
+flag, which creates parent directories in destination paths derived from
+to-patterns). Commands never apply to directories. It is **not** possible to
+copy, link, or move directories.
 
 The following command copies all files in the working directory tree to a
-neighboring file with an appended `.bak` extension:
+neighboring file with an appended `.bak` extension.
 
 ```shell
 nym copy '**' '{#0}.bak'
@@ -30,7 +36,7 @@ patterns must be escaped to avoid interacting with features like expansion.
 Quoting patterns usually prevents these unwanted interactions.
 
 The following command finds all files beneath a `src` directory with either the
-`.go` or `.rs` extension:
+`.go` or `.rs` extension.
 
 ```shell
 nym find '**/src/**/*.{go,rs}'
@@ -45,7 +51,7 @@ patterns can match paths on Windows, for example.
 
 Note that on Windows complex UNC paths or paths with other prefixes can be used
 via the `--tree`/`-C` option. For example, the following command copies all
-files from the UNC share path `\\server\share\src`:
+files from the UNC share path `\\server\share\src`.
 
 ```shell
 nym copy --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
@@ -169,6 +175,19 @@ text into four columns using right alignment and the character `0` for padding.
 If the original substitution text is `13`, then it becomes `0013` after
 formatting.
 
+## Crates
+
+Nym's core functionality is exposed as an independent library and front ends are
+developed atop this library. The following table describes the official Rust
+crates maintained in the [Nym repository][repository].
+
+| Crate       | Description                                        |
+|-------------|----------------------------------------------------|
+| [`nym`]     | Library implementing Nym's core functionality.     |
+| [`nym-bin`] | Binary for the `nym` command line interface (CLI). |
+
+The major and minor versions of these crates are upgraded together.
+
 ## Development
 
 Nym is loosely based upon `mmv`. Below are some initial ideas that have not yet
@@ -187,7 +206,7 @@ repository.
 
 ```shell
 git clone https://github.com/olson-sean-k/nym.git
-cd nym
+cd nym/nym-bin
 cargo install --locked --path=. --force
 ```
 
@@ -197,5 +216,10 @@ Nym is provided as is with no warranty. At the time of writing, Nym is highly
 experimental and likely has many bugs. Data loss may occur. **Use at your own
 risk.**
 
+[repository]: https://github.com/olson-sean-k/nym
+
 [BLAKE3]: https://github.com/BLAKE3-team/BLAKE3
 [rustup]: https://rustup.rs/
+
+[`nym`]: https://crates.io/crates/nym
+[`nym-bin`]: https://crates.io/crates/nym-bin

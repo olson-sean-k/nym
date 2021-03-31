@@ -1,8 +1,8 @@
-mod ui;
+mod option;
+mod terminal;
 
 use anyhow::Error;
-use console::Term;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -12,10 +12,32 @@ use nym::glob::Glob;
 use nym::manifest::Manifest;
 use nym::pattern::{FromPattern, ToPattern};
 
-use crate::ui::{IteratorExt as _, Label, Print};
+use crate::option::{ChildCommand, Toggle};
+use crate::terminal::{IteratorExt as _, Print, Terminal};
 
-const DISCLAIMER: &str = "paths may be ambiguous and undetected collisions may cause overwriting, \
-                          truncation, and data loss; review patterns and paths carefully.";
+const WARNING_TRANSFORM: &str = "paths may be ambiguous and undetected collisions may cause \
+                                 overwriting, truncation, and data loss; review patterns and paths \
+                                 carefully.";
+
+trait Label {
+    const LABEL: &'static str;
+}
+
+impl Label for Copy {
+    const LABEL: &'static str = "copy";
+}
+
+impl Label for HardLink {
+    const LABEL: &'static str = "hard link";
+}
+
+impl Label for Move {
+    const LABEL: &'static str = "move";
+}
+
+impl Label for SoftLink {
+    const LABEL: &'static str = "soft link";
+}
 
 /// Append, copy, link, and move files using patterns.
 #[derive(Debug, StructOpt)]
@@ -26,44 +48,43 @@ struct Program {
 }
 
 impl Program {
-    pub fn run(&self) -> Result<(), Error> {
+    pub fn run(&mut self) -> Result<(), Error> {
+        terminal::toggle_color_output(self.command.common_option_group().color);
         match self.command {
             Command::Append { .. } => todo!("append"),
             Command::Copy {
-                ref options,
+                ref mut options,
                 ref transform,
                 ..
             } => actuate::<Copy>(options, transform),
-            // TODO: Use `console` and the `ui` module to handle output.
             Command::Find {
-                ref options,
+                ref mut options,
                 ref from,
                 ..
             } => {
                 let from = FromPattern::from(Glob::parse(from)?);
-                let out = io::stderr();
-                let mut out = out.lock();
+                let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
                 for entry in from.read(&options.directory, options.depth + 1) {
                     if let Ok(entry) = entry {
-                        let _ = writeln!(out, "{}", entry.path().to_string_lossy().as_ref());
+                        writeln!(output, "{}", entry.path().to_string_lossy().as_ref())?;
                     }
                 }
                 Ok(())
             }
-            Command::Link { ref link, .. } => match link {
+            Command::Link { ref mut link, .. } => match link {
                 Link::Hard {
-                    ref options,
+                    ref mut options,
                     ref transform,
                     ..
                 } => actuate::<HardLink>(options, transform),
                 Link::Soft {
-                    ref options,
+                    ref mut options,
                     ref transform,
                     ..
                 } => actuate::<SoftLink>(options, transform),
             },
             Command::Move {
-                ref options,
+                ref mut options,
                 ref transform,
                 ..
             } => actuate::<Move>(options, transform),
@@ -73,7 +94,7 @@ impl Program {
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
-struct CommonOptions {
+struct CommonOptionGroup {
     /// Working directory tree.
     #[structopt(long = "tree", short = "C", default_value = ".")]
     directory: PathBuf,
@@ -89,13 +110,33 @@ struct CommonOptions {
     /// Do not print additional information nor warnings.
     #[structopt(long = "quiet", short = "q")]
     quiet: bool,
+    /// Determines if and when non-error output is routed to a configured pager.
+    ///
+    /// One of "always", "never", or "automatic" (or its abbreviation "auto").
+    /// When "automatic", output is only routed to the configured pager if
+    /// attached to an attended terminal (not piped).
+    #[structopt(long = "paging", default_value = "automatic")]
+    paging: Toggle,
+    /// Pager command line.
+    #[structopt(
+        long = "pager",
+        default_value = "less -R --no-init --quit-if-one-screen"
+    )]
+    pager: ChildCommand,
+    /// Determines if and when color and style is enabled in output.
+    ///
+    /// One of "always", "never", or "automatic" (or its abbreviation "auto").
+    /// When "automatic", output is colored and styled based on the CLI colors
+    /// specification: https://bixense.com/clicolors/
+    #[structopt(long = "color", default_value = "automatic")]
+    color: Toggle,
 }
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
-struct TransformOptions {
+struct TransformOptionGroup {
     #[structopt(flatten)]
-    options: CommonOptions,
+    options: CommonOptionGroup,
     /// Overwrite existing files resolved by to-patterns.
     #[structopt(long = "overwrite", short = "w")]
     overwrite: bool,
@@ -112,21 +153,21 @@ enum Command {
         #[structopt(flatten)]
         transform: UnparsedTransform,
         #[structopt(flatten)]
-        options: TransformOptions,
+        options: TransformOptionGroup,
     },
     /// Copies matched files.
     Copy {
         #[structopt(flatten)]
         transform: UnparsedTransform,
         #[structopt(flatten)]
-        options: TransformOptions,
+        options: TransformOptionGroup,
     },
     /// Finds matched files.
     Find {
         /// The from-pattern used to match files.
         from: String,
         #[structopt(flatten)]
-        options: CommonOptions,
+        options: CommonOptionGroup,
     },
     /// Links matched files.
     Link {
@@ -138,8 +179,22 @@ enum Command {
         #[structopt(flatten)]
         transform: UnparsedTransform,
         #[structopt(flatten)]
-        options: TransformOptions,
+        options: TransformOptionGroup,
     },
+}
+
+impl Command {
+    fn common_option_group(&self) -> &CommonOptionGroup {
+        match self {
+            Command::Append { ref options, .. }
+            | Command::Copy { ref options, .. }
+            | Command::Move { ref options, .. } => &options.options,
+            Command::Link { ref link, .. } => match link {
+                Link::Hard { ref options, .. } | Link::Soft { ref options, .. } => &options.options,
+            },
+            Command::Find { ref options, .. } => options,
+        }
+    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -150,14 +205,14 @@ enum Link {
         #[structopt(flatten)]
         transform: UnparsedTransform,
         #[structopt(flatten)]
-        options: TransformOptions,
+        options: TransformOptionGroup,
     },
     /// Symbolically links matched files.
     Soft {
         #[structopt(flatten)]
         transform: UnparsedTransform,
         #[structopt(flatten)]
-        options: TransformOptions,
+        options: TransformOptionGroup,
     },
 }
 
@@ -179,7 +234,10 @@ impl UnparsedTransform {
     }
 }
 
-fn actuate<A>(options: &TransformOptions, transform: &UnparsedTransform) -> Result<(), Error>
+fn actuate<A>(
+    options: &mut TransformOptionGroup,
+    transform: &UnparsedTransform,
+) -> Result<(), Error>
 where
     A: Label + Operation,
 {
@@ -188,28 +246,26 @@ where
         overwrite: options.overwrite,
     });
     let (from, to) = transform.parse()?;
-    let options = &options.options;
+    let options = &mut options.options;
 
-    let terminal = Term::stderr();
     let transform = environment.transform(from, to);
     let actuator = environment.actuator();
     let manifest: Manifest<A::Routing> = transform.read(&options.directory, options.depth + 1)?;
 
     if !options.quiet {
-        manifest.print(&terminal)?;
-        ui::print_warning(&terminal, DISCLAIMER)?;
+        Terminal::with_output_process_scoped(&mut options.pager, options.paging, |mut output| {
+            manifest.print(&mut output)
+        })?;
+        terminal::warning(WARNING_TRANSFORM)?;
     }
     if options.force
-        || ui::confirm(
-            &terminal,
-            format!(
-                "Ready to {} into {} files. Continue?",
-                A::LABEL,
-                manifest.routes().len(),
-            ),
-        )?
+        || terminal::confirm(format!(
+            "Ready to {} into {} files. Continue?",
+            A::LABEL,
+            manifest.routes().len(),
+        ))?
     {
-        for route in manifest.routes().print_progress(terminal) {
+        for route in manifest.routes().printed() {
             actuator.write::<A, _>(route)?;
         }
     }
