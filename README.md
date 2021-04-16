@@ -190,14 +190,35 @@ The major and minor versions of these crates are upgraded together.
 
 ## Installation
 
-[Install Rust][rustup] and use `cargo` to install from a clone of the
-repository.
+The `nym` binary can be installed in various ways described below.
+
+### Repository
+
+To install `nym` from a clone of the repository, [install Rust][rustup] and then
+build and install `nym` using `cargo`.
 
 ```shell
 git clone https://github.com/olson-sean-k/nym.git
 cd nym/nym-bin
 cargo install --locked --path=. --force
 ```
+
+### Registry
+
+To install `nym` from the [crates.io] Rust package registry, [install
+Rust][rustup] and then build and install `nym` using `cargo`.
+
+```shell
+cargo install nym-bin --locked --force
+```
+
+### Package
+
+The following table describes packages that can be used to install `nym`.
+
+| Platform   | Package                      |
+|------------|------------------------------|
+| Arch (AUR) | [`nym-git`][pkg-aur-nym-git] |
 
 ## Disclaimer
 
@@ -208,7 +229,10 @@ risk.**
 [repository]: https://github.com/olson-sean-k/nym
 
 [BLAKE3]: https://github.com/BLAKE3-team/BLAKE3
+[crates.io]: https://crates.io
 [rustup]: https://rustup.rs/
 
 [`nym`]: https://crates.io/crates/nym
 [`nym-bin`]: https://crates.io/crates/nym-bin
+
+[pkg-aur-nym-git]: https://aur.archlinux.org/packages/nym-git/
