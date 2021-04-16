@@ -21,7 +21,7 @@ from-pattern.
 Nym operates exclusively on files (with the exception of the `--parent`/`-p`
 flag, which creates parent directories in destination paths derived from
 to-patterns). Commands never apply to directories. It is **not** possible to
-copy, link, or move directories.
+copy, link, or move directories, for example.
 
 The following command copies all files in the working directory tree to a
 neighboring file with an appended `.bak` extension.
@@ -45,20 +45,21 @@ nym find '**/src/**/*.{go,rs}'
 ## From-Patterns
 
 From-patterns match source files to actuate using Unix-like globs. These globs
-**always** use forward slash `/` as a path separator and completely disallow
-back slash `\` literals. Separators are normalized across platforms; glob
+resemble literal paths, but additionally support wildcards, character classes,
+and alternatives that can be matched against paths on the file system.
+
+Forward slash `/` is **always** the path separator in globs and back slashes `\`
+are forbidden (back slash is used for escape sequences, but the literal sequence
+`\\` is not supported). Separators are normalized across platforms; glob
 patterns can match paths on Windows, for example.
 
-Note that on Windows complex UNC paths or paths with other prefixes can be used
-via the `--tree`/`-C` option. For example, the following command copies all
-files from the UNC share path `\\server\share\src`.
+On Windows, UNC paths or paths with other prefixes can be used via the
+`--tree`/`-C` option. For example, the following command copies all files from
+the UNC share path `\\server\share\src`.
 
 ```shell
 nym copy --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
 ```
-
-Globs resemble literal paths, but additionally support wildcards, character
-classes, and alternatives.
 
 ### Wildcards
 
@@ -130,10 +131,10 @@ from-pattern or file metadata. Substitutions are delimited by curly braces
 
 ### Captures
 
-Captures are typically indexed from a from-pattern using a hash followed by an
-index, like `{#1}`. These indices count from one; the zero index is used for the
-full text of a match. Empty braces also respresent the full text of a match, so
-`{#0}` and `{}` are equivalent.
+Captures index a from-pattern using a hash followed by the index, like `{#1}`.
+These indices count from one; the zero index is used for the full text of a
+match. Empty braces also respresent the full text of a match, so `{#0}` and `{}`
+are equivalent.
 
 Captures may include a condition. Conditions specify substitution text based on
 whether or not the match text is empty. Conditions follow capture identifiers
@@ -152,8 +153,8 @@ when that text is **empty**, is replaced by the literal `unknown`.
 ### Properties
 
 Properties include source file metadata in the destination path and are
-specified following an exclamation `!`. Properties are case insensitive.
-Supported properties are described in the following table.
+specified by name following an exclamation mark `!`. Property names are case
+insensitive. Supported properties are described in the following table.
 
 | Pattern    | Metadata                               |
 |------------|----------------------------------------|
@@ -173,7 +174,7 @@ The pad formatter pads substitution text to a specified width and alignment
 using the given character shim. For example, `{#1|>4[0]}` pads the substition
 text into four columns using right alignment and the character `0` for padding.
 If the original substitution text is `13`, then it becomes `0013` after
-formatting.
+formatting in this example.
 
 ## Crates
 
@@ -222,9 +223,8 @@ The following table describes packages that can be used to install `nym`.
 
 ## Disclaimer
 
-Nym is provided as is with no warranty. At the time of writing, Nym is highly
-experimental and likely has many bugs. Data loss may occur. **Use at your own
-risk.**
+Nym is provided as is and with **no** warranty. At the time of writing, Nym is
+experimental and likely has bugs. Data loss may occur. **Use at your own risk.**
 
 [repository]: https://github.com/olson-sean-k/nym
 
