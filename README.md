@@ -188,17 +188,6 @@ crates maintained in the [Nym repository][repository].
 
 The major and minor versions of these crates are upgraded together.
 
-## Development
-
-Nym is loosely based upon `mmv`. Below are some initial ideas that have not yet
-been implemented (in no particular order).
-
-- Support for various from-patterns, including raw binary regular expressions
-  and metadata filters (e.g., files modified after some timestamp).
-- Custom to-pattern properties read from the shell.
-- Formatters in to-patterns (e.g., width, alignment, capitalization, etc.).
-- An interactive TUI.
-
 ## Installation
 
 [Install Rust][rustup] and use `cargo` to install from a clone of the
