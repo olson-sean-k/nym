@@ -3,10 +3,40 @@ use std::borrow::Cow;
 
 use crate::glob::GlobError;
 
-#[derive(Clone, Copy, Debug)]
-pub enum Evaluation {
-    Eager,
-    Lazy,
+#[derive(Clone, Debug)]
+pub struct Alternative<'t>(pub Vec<Vec<Token<'t>>>);
+
+impl<'t> Alternative<'t> {
+    pub fn into_owned(self) -> Alternative<'static> {
+        Alternative(
+            self.0
+                .into_iter()
+                .map(|tokens| tokens.into_iter().map(|token| token.into_owned()).collect())
+                .collect(),
+        )
+    }
+
+    pub fn has_subtree_tokens(&self) -> bool {
+        self.0.iter().any(|tokens| {
+            tokens.iter().any(|token| match token {
+                Token::Alternative(ref alternative) => alternative.has_subtree_tokens(),
+                Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree) => true,
+                _ => false,
+            })
+        })
+    }
+}
+
+impl<'t> AsRef<Vec<Vec<Token<'t>>>> for Alternative<'t> {
+    fn as_ref(&self) -> &Vec<Vec<Token<'t>>> {
+        &self.0
+    }
+}
+
+impl<'t> From<Vec<Vec<Token<'t>>>> for Alternative<'t> {
+    fn from(alternatives: Vec<Vec<Token<'t>>>) -> Self {
+        Alternative(alternatives)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -27,6 +57,12 @@ impl From<(char, char)> for Archetype {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum Evaluation {
+    Eager,
+    Lazy,
+}
+
 #[derive(Clone, Debug)]
 pub enum Wildcard {
     One,
@@ -36,7 +72,7 @@ pub enum Wildcard {
 
 #[derive(Clone, Debug)]
 pub enum Token<'t> {
-    Alternative(Vec<Vec<Token<'t>>>),
+    Alternative(Alternative<'t>),
     Class {
         is_negated: bool,
         archetypes: Vec<Archetype>,
@@ -49,12 +85,7 @@ pub enum Token<'t> {
 impl<'t> Token<'t> {
     pub fn into_owned(self) -> Token<'static> {
         match self {
-            Token::Alternative(alternatives) => Token::Alternative(
-                alternatives
-                    .into_iter()
-                    .map(|tokens| tokens.into_iter().map(|token| token.into_owned()).collect())
-                    .collect(),
-            ),
+            Token::Alternative(alternative) => alternative.into_owned().into(),
             Token::Class {
                 is_negated,
                 archetypes,
@@ -66,6 +97,12 @@ impl<'t> Token<'t> {
             Token::NonTreeSeparator => Token::NonTreeSeparator,
             Token::Wildcard(wildcard) => Token::Wildcard(wildcard),
         }
+    }
+}
+
+impl<'t> From<Alternative<'t>> for Token<'t> {
+    fn from(alternative: Alternative<'t>) -> Self {
+        Token::Alternative(alternative)
     }
 }
 
@@ -235,7 +272,7 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
             bytes::tag("{"),
             combinator::map(
                 multi::separated_list1(bytes::tag(","), glob),
-                Token::Alternative,
+                |alternatives| Alternative::from(alternatives).into(),
             ),
             bytes::tag("}"),
         )(input)

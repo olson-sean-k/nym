@@ -202,8 +202,9 @@ impl<'t> Glob<'t> {
                         }
                     }
                     (_, NonTreeSeparator) => pattern.push_str(&escape(b'/')),
-                    (_, Alternative(alternatives)) => {
-                        let encodings: Vec<_> = alternatives
+                    (_, Alternative(alternative)) => {
+                        let encodings: Vec<_> = alternative
+                            .as_ref()
                             .iter()
                             .map(|tokens| {
                                 let mut pattern = String::new();
@@ -437,6 +438,9 @@ impl<'g, 't> Read<'g, 't> {
         let mut tokens = tokens.into_iter().peekable();
         while let Some(token) = tokens.peek().map(|token| token.borrow()) {
             match token {
+                Token::Alternative(ref alternative) if alternative.has_subtree_tokens() => {
+                    break; // Stop at alternative tokens with sub-trees.
+                }
                 Token::NonTreeSeparator => {
                     tokens.next();
                     continue; // Skip separators.
@@ -445,12 +449,15 @@ impl<'g, 't> Read<'g, 't> {
                     break; // Stop at tree tokens.
                 }
                 _ => {
-                    regexes.push(Glob::compile(tokens.take_while_ref(|token| {
-                        !matches!(
-                            token.borrow(),
-                            Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree)
-                        )
-                    })));
+                    regexes.push(Glob::compile(tokens.take_while_ref(
+                        |token| match token.borrow() {
+                            Token::Alternative(ref alternative) => {
+                                !alternative.has_subtree_tokens()
+                            }
+                            Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree) => false,
+                            _ => true,
+                        },
+                    )));
                 }
             }
         }
