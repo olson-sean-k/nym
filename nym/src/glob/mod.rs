@@ -1,30 +1,175 @@
 mod capture;
+mod rule;
 mod token;
 
 use bstr::ByteVec;
-use itertools::{EitherOrBoth, Itertools as _};
+use itertools::{EitherOrBoth, Itertools as _, Position};
 use nom::error::ErrorKind;
 use os_str_bytes::OsStrBytes as _;
 use regex::bytes::Regex;
-use smallvec::SmallVec;
 use std::borrow::{Borrow, Cow};
 use std::ffi::OsStr;
 use std::fs::FileType;
+use std::iter::Fuse;
 use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
 use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
 
 use crate::glob::token::{Token, Wildcard};
-use crate::PositionExt as _;
 
 pub use crate::glob::capture::Captures;
+pub use crate::glob::rule::RuleError;
+
+trait IteratorExt: Iterator + Sized {
+    fn adjacent(self) -> Adjacent<Self>
+    where
+        Self::Item: Clone;
+}
+
+impl<I> IteratorExt for I
+where
+    I: Iterator,
+{
+    fn adjacent(self) -> Adjacent<Self>
+    where
+        Self::Item: Clone,
+    {
+        Adjacent::new(self)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Adjacency<T> {
+    Only(T),
+    First(T, T),
+    Middle(T, T, T),
+    Last(T, T),
+}
+
+impl<T> Adjacency<T> {
+    pub fn into_tuple(self) -> (Option<T>, T, Option<T>) {
+        match self {
+            Adjacency::Only(item) => (None, item, None),
+            Adjacency::First(item, right) => (None, item, Some(right)),
+            Adjacency::Middle(left, item, right) => (Some(left), item, Some(right)),
+            Adjacency::Last(left, item) => (Some(left), item, None),
+        }
+    }
+}
+
+struct Adjacent<I>
+where
+    I: Iterator,
+{
+    input: Fuse<I>,
+    adjacency: Option<Adjacency<I::Item>>,
+}
+
+impl<I> Adjacent<I>
+where
+    I: Iterator,
+{
+    fn new(input: I) -> Self {
+        let mut input = input.fuse();
+        let adjacency = match (input.next(), input.next()) {
+            (Some(first), Some(second)) => Some(Adjacency::First(first, second)),
+            (Some(first), None) => Some(Adjacency::Only(first)),
+            (None, None) => None,
+            // The input iterator is fused, so this cannot occur.
+            (None, Some(_)) => unreachable!(),
+        };
+        Adjacent { input, adjacency }
+    }
+}
+
+impl<I> Iterator for Adjacent<I>
+where
+    I: Iterator,
+    I::Item: Clone,
+{
+    type Item = Adjacency<I::Item>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.input.next();
+        self.adjacency.take().map(|adjacency| {
+            self.adjacency = match adjacency.clone() {
+                Adjacency::First(left, item) | Adjacency::Middle(_, left, item) => {
+                    if let Some(right) = next {
+                        Some(Adjacency::Middle(left, item, right))
+                    }
+                    else {
+                        Some(Adjacency::Last(left, item))
+                    }
+                }
+                Adjacency::Only(_) | Adjacency::Last(_, _) => None,
+            };
+            adjacency
+        })
+    }
+}
+
+trait PositionExt<T> {
+    fn as_tuple(&self) -> (Position<()>, &T);
+
+    fn interior_borrow<B>(&self) -> Position<&B>
+    where
+        T: Borrow<B>;
+}
+
+impl<T> PositionExt<T> for Position<T> {
+    fn as_tuple(&self) -> (Position<()>, &T) {
+        match *self {
+            Position::First(ref inner) => (Position::First(()), inner),
+            Position::Middle(ref inner) => (Position::Middle(()), inner),
+            Position::Last(ref inner) => (Position::Last(()), inner),
+            Position::Only(ref inner) => (Position::Only(()), inner),
+        }
+    }
+
+    fn interior_borrow<B>(&self) -> Position<&B>
+    where
+        T: Borrow<B>,
+    {
+        match *self {
+            Position::First(ref inner) => Position::First(inner.borrow()),
+            Position::Middle(ref inner) => Position::Middle(inner.borrow()),
+            Position::Last(ref inner) => Position::Last(inner.borrow()),
+            Position::Only(ref inner) => Position::Only(inner.borrow()),
+        }
+    }
+}
+
+trait SliceExt<T> {
+    fn terminals(&self) -> Option<Terminals<&T>>;
+}
+
+impl<T> SliceExt<T> for [T] {
+    fn terminals(&self) -> Option<Terminals<&T>> {
+        match self.len() {
+            0 => None,
+            1 => Some(Terminals::Only(&self[0])),
+            _ => Some(Terminals::StartEnd(
+                self.first().unwrap(),
+                self.last().unwrap(),
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Terminals<T> {
+    Only(T),
+    StartEnd(T, T),
+}
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum GlobError {
     #[error("failed to parse glob: {0}")]
     Parse(nom::Err<(String, ErrorKind)>),
+    #[error("invalid glob: {0}")]
+    Rule(RuleError),
     #[error("failed to read directory tree: {0}")]
     Read(walkdir::Error),
 }
@@ -38,6 +183,12 @@ impl<'i> From<nom::Err<(&'i str, ErrorKind)>> for GlobError {
 impl From<walkdir::Error> for GlobError {
     fn from(error: walkdir::Error) -> Self {
         GlobError::Read(error)
+    }
+}
+
+impl From<RuleError> for GlobError {
+    fn from(error: RuleError) -> Self {
+        GlobError::Rule(error)
     }
 }
 
@@ -195,7 +346,7 @@ impl<'t> Glob<'t> {
             use crate::glob::token::Wildcard::{One, Tree, ZeroOrMore};
 
             for token in tokens.into_iter().with_position() {
-                match token.interior_borrow().lift() {
+                match token.interior_borrow().as_tuple() {
                     (_, Literal(ref literal)) => {
                         for &byte in literal.as_bytes() {
                             pattern.push_str(&escape(byte));
@@ -204,7 +355,7 @@ impl<'t> Glob<'t> {
                     (_, NonTreeSeparator) => pattern.push_str(&escape(b'/')),
                     (_, Alternative(alternative)) => {
                         let encodings: Vec<_> = alternative
-                            .as_ref()
+                            .branches()
                             .iter()
                             .map(|tokens| {
                                 let mut pattern = String::new();
@@ -281,6 +432,7 @@ impl<'t> Glob<'t> {
 
     pub fn parse(text: &'t str) -> Result<Self, GlobError> {
         let tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
+        rule::check(tokens.iter())?;
         let regex = Glob::compile(tokens.iter());
         Ok(Glob { tokens, regex })
     }
@@ -351,58 +503,20 @@ impl<'t> Glob<'t> {
     }
 
     fn literal_path_prefix(&self) -> Option<PathBuf> {
-        #[derive(Clone, Debug)]
-        enum Component<'t> {
-            Separator,
-            Nominal(SmallVec<[&'t Token<'t>; 4]>),
-        }
-
         let mut prefix = String::new();
-        for component in
-            self.tokens.iter().batching(|tokens| {
-                let first = tokens.next();
-                first.map(|first| {
-                    if matches!(first, Token::NonTreeSeparator) {
-                        Component::Separator
-                    }
-                    else {
-                        Component::Nominal(
-                            Some(first)
-                                .into_iter()
-                                .chain(tokens.take_while_ref(|token| {
-                                    !matches!(token, Token::NonTreeSeparator)
-                                }))
-                                .collect(),
-                        )
-                    }
-                })
-            })
-        {
-            match component {
-                Component::Separator => prefix.push(MAIN_SEPARATOR),
-                Component::Nominal(tokens) => {
-                    // NOTE: Tokens are optimized such that literals are
-                    //       coalesced. These iterations typically operate on a
-                    //       very small number of tokens.
-                    if tokens
-                        .iter()
-                        .any(|token| !matches!(token, Token::Literal(_)))
-                    {
-                        // Abandon this component and construct the prefix if
-                        // non-literal tokens are present.
-                        break;
-                    }
-                    for token in tokens {
-                        match *token {
-                            Token::Literal(ref literal) => prefix.push_str(literal.as_ref()),
-                            // See above; no non-literal tokens should be
-                            // present here.
-                            _ => unreachable!(),
-                        }
-                    }
-                }
-            }
+        if let Some(Token::NonTreeSeparator) = self.tokens.first() {
+            // Include any rooting separator at the beginning of the glob.
+            prefix.push(MAIN_SEPARATOR);
         }
+        // TODO: Replace `map`, `take_while`, and `flatten` with `map_while`
+        //       when it stabilizes.
+        prefix.push_str(
+            &token::components(self.tokens.iter())
+                .map(|component| component.literal())
+                .take_while(|literal| literal.is_some())
+                .flatten()
+                .join(&MAIN_SEPARATOR.to_string()),
+        );
         if prefix.is_empty() {
             None
         }
@@ -533,7 +647,23 @@ impl<'g, 't> Iterator for Read<'g, 't> {
 mod tests {
     use std::path::Path;
 
-    use crate::glob::{BytePath, Glob};
+    use crate::glob::{Adjacency, BytePath, Glob, IteratorExt as _};
+
+    #[test]
+    fn adjacent() {
+        let mut adjacent = Option::<i32>::None.into_iter().adjacent();
+        assert_eq!(adjacent.next(), None);
+
+        let mut adjacent = Some(0i32).into_iter().adjacent();
+        assert_eq!(adjacent.next(), Some(Adjacency::Only(0)));
+        assert_eq!(adjacent.next(), None);
+
+        let mut adjacent = (0i32..3).adjacent();
+        assert_eq!(adjacent.next(), Some(Adjacency::First(0, 1)));
+        assert_eq!(adjacent.next(), Some(Adjacency::Middle(0, 1, 2)));
+        assert_eq!(adjacent.next(), Some(Adjacency::Last(1, 2)));
+        assert_eq!(adjacent.next(), None);
+    }
 
     #[test]
     fn parse_glob_with_eager_zom_tokens() {
@@ -604,6 +734,7 @@ mod tests {
         Glob::parse("a/{???,x$y,frob}b*").unwrap();
         Glob::parse("a/{???,x$y,frob}b*").unwrap();
         Glob::parse("a/{???,{x*z,y$}}b*").unwrap();
+        Glob::parse("a/{**/b,b/**}/ca{t,b/**}").unwrap();
     }
 
     #[test]
@@ -683,7 +814,28 @@ mod tests {
     }
 
     #[test]
+    fn reject_glob_with_invalid_alternative_zom_tokens() {
+        assert!(Glob::parse("*{okay,*}").is_err());
+        assert!(Glob::parse("{okay,*}*").is_err());
+        assert!(Glob::parse("${okay,*error}").is_err());
+        assert!(Glob::parse("{okay,error*}$").is_err());
+    }
+
+    #[test]
+    fn reject_glob_with_invalid_alternative_tree_tokens() {
+        assert!(Glob::parse("{**}").is_err());
+        assert!(Glob::parse("prefix{okay/**,**/error}").is_err());
+        assert!(Glob::parse("{**/okay,error/**}postfix").is_err());
+        assert!(Glob::parse("{**/okay,prefix{error/**}}postfix").is_err());
+        assert!(Glob::parse("{**/okay,prefix{**/error}}postfix").is_err());
+    }
+
+    #[test]
     fn literal_path_prefix() {
+        assert_eq!(
+            Glob::parse("/a/b").unwrap().literal_path_prefix(),
+            Some(Path::new("/a/b").to_path_buf()),
+        );
         assert_eq!(
             Glob::parse("a/b").unwrap().literal_path_prefix(),
             Some(Path::new("a/b").to_path_buf()),

@@ -46,7 +46,8 @@ nym find '**/src/**/*.{go,rs}'
 
 From-patterns match source files to actuate using Unix-like globs. These globs
 resemble literal paths, but additionally support wildcards, character classes,
-and alternatives that can be matched against paths on the file system.
+and alternatives that can be matched against paths on the file system. Matches
+provide capture text that can be used in to-patterns.
 
 Forward slash `/` is **always** the path separator in globs and back slashes `\`
 are forbidden (back slash is used for escape sequences, but the literal sequence
@@ -63,18 +64,18 @@ nym copy --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
 
 ### Wildcards
 
-Globs support wildcards that match different fragments of paths and provide
-capture text that can be used in to-patterns.
+Wildcards match some amount of arbitrary text in paths and are the most
+fundamental tool provided by globs.
 
 The tree wildcard `**` matches zero or more sub-directories. **This is the only
 way to match against arbitrary directories**; all other wildcards do **not**
 match across directory boundaries. When a tree wildcard participates in a match
 and does not terminate the pattern, its capture includes a trailing path
-separator.  If a tree wildcard does not participate in a match, its capture is
-an empty string with no path separator. Tree wildcards must be delimited by path
-separators or nothing (such as the beginning and/or end of a pattern). If a glob
-consists solely of a tree wildcard, then it matches all files in the working
-directory tree.
+separator. If a tree wildcard does not participate in a match, its capture is an
+empty string with no path separator. Tree wildcards must be delimited by path
+separators or nothing (such as the beginning and/or end of a glob or sub-glob).
+If a glob consists solely of a tree wildcard, then it matches all files in the
+working directory tree.
 
 The zero-or-more wildcards `*` and `$` match zero or more of any character
 **except path separators**. Zero-or-more wildcards cannot be adjacent to other
@@ -112,22 +113,27 @@ escaped via a backslash, such as `[a\-]` to match `a` or `-`.
 
 Alternatives match an arbitrary sequence of comma separated sub-globs delimited
 by curly braces `{...,...}`. For example, `{a?c,x?z,foo}` matches any of the
-sub-globs `a?c`, `x?z`, or `foo` in order.
+sub-globs `a?c`, `x?z`, or `foo` in order. Alternatives may be arbitrarily
+nested, such as in `a{b*,c{x?z,foo},d}`.
 
 Alternatives form a single capture group regardless of the contents of their
 sub-globs. This capture is formed from the complete match of the sub-glob, so if
 the sub-glob `a?c` matches `abc` in the above example, then the capture text
 will be `abc` (**not** `b` as it would be outside of an alternative sequence).
 
-Note that alternatives may be nested, though this has no semantic effect and
-matches the same way as a flattened sequence of sub-globs.
+Sub-globs, in particular those containing wildcards, must consider neighboring
+patterns. For example, it is not possible to introduce a tree wildcard that is
+adjacent to anything but a path separator or termination, so `foo{bar,baz/**}`
+is allowed but `foo{bar,**/baz}` is not. Because it matches anything, singular
+tree wildcards are **never** allowed in sub-globs, so `foo/{bar,**}` is
+disallowed.
 
 ## To-Patterns
 
 To-patterns resolve destination paths. These patterns consist of literals and
 substitutions. A substitution is either a capture from a corresponding
-from-pattern or file metadata. Substitutions are delimited by curly braces
-`{...}`.
+from-pattern or a property that reads file metadata. Substitutions are delimited
+by curly braces `{...}`.
 
 ### Captures
 
@@ -165,10 +171,10 @@ For example, `{!b3sum}` is replaced by the [BLAKE3] hash of the matched file.
 
 ### Formatters
 
-Substitutions support optional formatters. Formatters must appear last in a
-substitution following a vertical bar `|`. Formatters are separated by commas
-`,`. Any number of formatters may be used and are applied in the order in which
-they appear.
+Substitutions (both captures and properties) support optional formatters.
+Formatters must appear last in a substitution following a vertical bar `|`.
+Formatters are separated by commas `,`. Any number of formatters may be used and
+are applied in the order in which they appear.
 
 The pad formatter pads substitution text to a specified width and alignment
 using the given character shim. For example, `{#1|>4[0]}` pads the substition

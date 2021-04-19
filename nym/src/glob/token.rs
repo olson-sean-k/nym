@@ -1,4 +1,5 @@
 use itertools::Itertools as _;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 
 use crate::glob::GlobError;
@@ -16,6 +17,10 @@ impl<'t> Alternative<'t> {
         )
     }
 
+    pub fn branches(&self) -> &Vec<Vec<Token<'t>>> {
+        &self.0
+    }
+
     pub fn has_subtree_tokens(&self) -> bool {
         self.0.iter().any(|tokens| {
             tokens.iter().any(|token| match token {
@@ -24,12 +29,6 @@ impl<'t> Alternative<'t> {
                 _ => false,
             })
         })
-    }
-}
-
-impl<'t> AsRef<Vec<Vec<Token<'t>>>> for Alternative<'t> {
-    fn as_ref(&self) -> &Vec<Vec<Token<'t>>> {
-        &self.0
     }
 }
 
@@ -124,13 +123,73 @@ impl From<Wildcard> for Token<'static> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Component<'t>(SmallVec<[&'t Token<'t>; 4]>);
+
+impl<'t> Component<'t> {
+    pub fn tokens(&self) -> &[&'t Token<'t>] {
+        self.0.as_ref()
+    }
+
+    pub fn literal(&self) -> Option<Cow<'t, str>> {
+        // This predicate is more easily expressed with `all`, but `any` is used
+        // here, because it returns `false` for empty iterators and in that case
+        // this function should return `None`.
+        (!self
+            .tokens()
+            .iter()
+            .any(|token| !matches!(token, Token::Literal(_))))
+        .then(|| {
+            if self.tokens().len() == 1 {
+                match self.tokens().first().unwrap() {
+                    Token::Literal(ref literal) => literal.clone(),
+                    _ => unreachable!(), // See predicate above.
+                }
+            }
+            else {
+                self.tokens()
+                    .iter()
+                    .map(|token| match token {
+                        Token::Literal(ref literal) => literal,
+                        _ => unreachable!(), // See predicate above.
+                    })
+                    .join("")
+                    .into()
+            }
+        })
+    }
+}
+
+pub fn components<'t, I>(tokens: I) -> impl Iterator<Item = Component<'t>>
+where
+    I: IntoIterator<Item = &'t Token<'t>>,
+    I::IntoIter: Clone,
+{
+    tokens.into_iter().batching(|tokens| {
+        let mut first = tokens.next();
+        while matches!(first, Some(Token::NonTreeSeparator)) {
+            first = tokens.next();
+        }
+        first.map(|first| match first {
+            Token::Wildcard(Wildcard::Tree) => Component(smallvec![first]),
+            _ => Component(
+                Some(first)
+                    .into_iter()
+                    .chain(tokens.take_while_ref(|token| {
+                        !matches!(
+                            token,
+                            Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree)
+                        )
+                    }))
+                    .collect(),
+            ),
+        })
+    })
+}
+
 // TODO: Patterns like `/**` do not parse correctly. The initial separator is
 //       considered a part of a tree token. This means that the root is lost,
 //       such that `/**` and `**` are equivalent.
-//
-//       This should be fixed, but note that solutions that introduce invalid
-//       token sequences should be avoided! If possible, arbitrary token
-//       sequences should always be valid.
 // NOTE: Both forward and back slashes are disallowed in non-separator tokens
 //       like literals and character classes. This means escaping back slashes
 //       is not possible (despite common conventions). This avoids non-separator
@@ -202,7 +261,15 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
                 sequence::delimited(
                     branch::alt((bytes::tag("/"), bytes::tag(""))),
                     bytes::tag("**"),
-                    branch::alt((bytes::tag("/"), combinator::eof)),
+                    branch::alt((
+                        bytes::tag("/"),
+                        combinator::eof,
+                        // In alternatives, tree tokens may be terminated by
+                        // commas `,` or closing curly braces `}`. These
+                        // delimiting tags must be consumed by their respective
+                        // parsers, so they are peeked.
+                        combinator::peek(branch::alt((bytes::tag(","), bytes::tag("}")))),
+                    )),
                 ),
                 |_| Wildcard::Tree.into(),
             ),
