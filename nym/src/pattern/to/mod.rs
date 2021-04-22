@@ -1,16 +1,13 @@
 mod token;
 
-use filetime::FileTime;
 use std::borrow::Cow;
-use std::fs;
 use std::path::Path;
 use std::str::{self, FromStr};
 
 use crate::fmt;
 use crate::glob::Captures;
-use crate::memoize::Memoized;
 use crate::pattern::to::token::{
-    Capture, Condition, Formatter, Identifier, NonEmptyCase, Property, Subject, Substitution, Token,
+    Capture, Condition, Formatter, Identifier, NonEmptyCase, Subject, Substitution, Token,
 };
 use crate::pattern::PatternError;
 
@@ -30,16 +27,26 @@ impl<'t> ToPattern<'t> {
         ToPattern { tokens }
     }
 
+    #[allow(unused_imports)]
     pub fn resolve(
         &self,
-        source: impl AsRef<Path>,
+        #[allow(unused_variables)] source: impl AsRef<Path>,
         captures: &Captures<'_>,
     ) -> Result<String, PatternError> {
+        use std::fs;
+
+        use crate::memoize::Memoized;
+        use crate::pattern::to::token::Property;
+
+        #[cfg(feature = "property-b3sum")]
         let mut b3sum = Memoized::from(|| {
             fs::read(source.as_ref())
                 .map(|data| blake3::hash(data.as_ref()).to_hex().as_str().to_owned())
         });
+        #[cfg(feature = "property-ts")]
         let mut timestamp = Memoized::from(|| {
+            use filetime::FileTime;
+
             fs::metadata(source.as_ref())
                 .map(|metadata| format!("{}", FileTime::from_last_modification_time(&metadata)))
         });
@@ -75,14 +82,23 @@ impl<'t> ToPattern<'t> {
                             };
                             (capture, condition.as_ref())
                         }
+                        #[allow(unreachable_code)]
+                        #[allow(unreachable_patterns)]
                         Subject::Property(ref property) => (
                             match *property {
+                                #[cfg(feature = "property-b3sum")]
                                 Property::B3Sum => {
                                     b3sum.get().map_err(PatternError::Property)?.into()
                                 }
+                                #[cfg(feature = "property-ts")]
                                 Property::Timestamp => {
                                     timestamp.get().map_err(PatternError::Property)?.into()
                                 }
+                                #[cfg(not(any(
+                                    feature = "property-b3sum",
+                                    feature = "property-ts"
+                                )))]
+                                _ => unreachable!(),
                             },
                             None,
                         ),

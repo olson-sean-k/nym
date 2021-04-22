@@ -22,6 +22,14 @@ categories = [
 name = "nym"
 path = "src/main.rs"
 
+[features]
+default = [
+    'property-b3sum',
+    'property-ts'
+]
+property-b3sum = ['nym/property-b3sum']
+property-ts = ['nym/property-ts']
+
 [dependencies]
 anyhow = "^1.0.0"
 console = "^0.13.0"

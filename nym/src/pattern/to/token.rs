@@ -168,7 +168,9 @@ impl<'t> Capture<'t> {
 
 #[derive(Clone, Debug)]
 pub enum Property {
+    #[cfg(feature = "property-b3sum")]
     B3Sum,
+    #[cfg(feature = "property-ts")]
     Timestamp,
 }
 
@@ -375,6 +377,7 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         )(input)
     }
 
+    #[cfg(any(feature = "property-b3sum", feature = "property-ts"))]
     fn property<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
     where
         E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
@@ -383,10 +386,15 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
             braced(sequence::tuple((
                 sequence::preceded(
                     character::char('!'),
+                    #[cfg(all(feature = "property-b3sum", feature = "property-ts"))]
                     branch::alt((
                         combinator::map(bytes::tag_no_case("b3sum"), |_| Property::B3Sum),
                         combinator::map(bytes::tag_no_case("ts"), |_| Property::Timestamp),
                     )),
+                    #[cfg(all(feature = "property-b3sum", not(feature = "property-ts")))]
+                    combinator::map(bytes::tag_no_case("b3sum"), |_| Property::B3Sum),
+                    #[cfg(all(feature = "property-ts", not(feature = "property-b3sum")))]
+                    combinator::map(bytes::tag_no_case("ts"), |_| Property::Timestamp),
                 ),
                 branch::alt((formatters, combinator::success(Vec::new()))),
             ))),
@@ -399,7 +407,12 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         )(input)
     }
 
-    combinator::all_consuming(multi::many1(branch::alt((literal, capture, property))))(text)
-        .map(|(_, tokens)| tokens)
-        .map_err(From::from)
+    combinator::all_consuming(multi::many1(branch::alt((
+        literal,
+        capture,
+        #[cfg(any(feature = "property-b3sum", feature = "property-ts"))]
+        property,
+    ))))(text)
+    .map(|(_, tokens)| tokens)
+    .map_err(From::from)
 }

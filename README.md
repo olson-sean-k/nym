@@ -162,12 +162,15 @@ Properties include source file metadata in the destination path and are
 specified by name following an exclamation mark `!`. Property names are case
 insensitive. Supported properties are described in the following table.
 
-| Pattern    | Metadata                               |
-|------------|----------------------------------------|
-| `{!b3sum}` | [BLAKE3] hash of the source file.      |
-| `{!ts}`    | Modified timestamp of the source file. |
+| Pattern    | Metadata                               | Cargo Feature              |
+|------------|----------------------------------------|----------------------------|
+| `{!b3sum}` | [BLAKE3] hash of the source file.      | `property-b3sum` (default) |
+| `{!ts}`    | Modified timestamp of the source file. | `property-ts` (default)    |
 
 For example, `{!b3sum}` is replaced by the [BLAKE3] hash of the matched file.
+
+Properties may require additional dependencies and some can be toggled in a
+build using [Cargo features][features].
 
 ### Formatters
 
@@ -236,6 +239,7 @@ experimental and likely has bugs. Data loss may occur. **Use at your own risk.**
 
 [BLAKE3]: https://github.com/BLAKE3-team/BLAKE3
 [crates.io]: https://crates.io
+[features]: https://doc.rust-lang.org/cargo/reference/features.html
 [rustup]: https://rustup.rs/
 
 [`nym`]: https://crates.io/crates/nym
