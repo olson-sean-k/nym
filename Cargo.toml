@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "nym-bin",
+    "nym-cli",
     "nym",
 ]

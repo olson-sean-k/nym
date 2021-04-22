@@ -194,7 +194,7 @@ crates maintained in the [Nym repository][repository].
 | Crate       | Description                                        |
 |-------------|----------------------------------------------------|
 | [`nym`]     | Library implementing Nym's core functionality.     |
-| [`nym-bin`] | Binary for the `nym` command line interface (CLI). |
+| [`nym-cli`] | Binary for the `nym` command line interface (CLI). |
 
 The major and minor versions of these crates are upgraded together.
 
@@ -209,7 +209,7 @@ build and install `nym` using `cargo`.
 
 ```shell
 git clone https://github.com/olson-sean-k/nym.git
-cd nym/nym-bin
+cd nym/nym-cli
 cargo install --locked --path=. --force
 ```
 
@@ -219,7 +219,7 @@ To install `nym` from the [crates.io] Rust package registry, [install
 Rust][rustup] and then build and install `nym` using `cargo`.
 
 ```shell
-cargo install nym-bin --locked --force
+cargo install nym-cli --locked --force
 ```
 
 ### Package
@@ -243,6 +243,6 @@ experimental and likely has bugs. Data loss may occur. **Use at your own risk.**
 [rustup]: https://rustup.rs/
 
 [`nym`]: https://crates.io/crates/nym
-[`nym-bin`]: https://crates.io/crates/nym-bin
+[`nym-cli`]: https://crates.io/crates/nym-cli
 
 [pkg-aur-nym-git]: https://aur.archlinux.org/packages/nym-git/

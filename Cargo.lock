@@ -376,7 +376,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nym-bin"
+name = "nym-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",

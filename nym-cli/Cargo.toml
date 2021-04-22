@@ -1,5 +1,5 @@
 [package]
-name = "nym-bin"
+name = "nym-cli"
 version = "0.0.0"
 authors = ["Sean Olson <olson.sean.k@gmail.com>"]
 description = "Append, copy, link, and move files using patterns."
