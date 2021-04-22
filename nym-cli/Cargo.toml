@@ -33,7 +33,7 @@ property-ts = ['nym/property-ts']
 [dependencies]
 anyhow = "^1.0.0"
 console = "^0.13.0"
-dialoguer = "^0.7.0"
+dialoguer = "^0.8.0"
 indicatif = "^0.15.0"
 itertools = "^0.10.0"
 lazy_static = "^1.4.0"
