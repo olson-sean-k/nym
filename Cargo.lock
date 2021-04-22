@@ -380,7 +380,7 @@ name = "nym-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "console 0.13.0",
+ "console 0.14.1",
  "dialoguer",
  "indicatif",
  "itertools",
