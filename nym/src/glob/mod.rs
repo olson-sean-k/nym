@@ -9,7 +9,7 @@ use os_str_bytes::OsStrBytes as _;
 use regex::bytes::Regex;
 use std::borrow::{Borrow, Cow};
 use std::ffi::OsStr;
-use std::fs::FileType;
+use std::fs::{FileType, Metadata};
 use std::iter::Fuse;
 use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
 use std::str::FromStr;
@@ -272,6 +272,13 @@ impl<'t> Entry<'t> {
 
     pub fn file_type(&self) -> FileType {
         self.inner.file_type()
+    }
+
+    // TODO: On some platforms, traversing a directory tree also yields file
+    //       metadata (e.g., Windows). Forward this metadata to path printing
+    //       using `lscolors` in `nym-cli` to avoid unnecessary reads.
+    pub fn metadata(&self) -> Result<Metadata, GlobError> {
+        self.inner.metadata().map_err(From::from)
     }
 
     pub fn depth(&self) -> usize {
