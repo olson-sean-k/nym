@@ -2,7 +2,6 @@ mod option;
 mod terminal;
 
 use anyhow::Error;
-use std::io::Write;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -66,7 +65,7 @@ impl Program {
                 let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
                 for entry in from.read(&options.directory, options.depth + 1) {
                     if let Ok(entry) = entry {
-                        writeln!(output, "{}", entry.path().to_string_lossy().as_ref())?;
+                        entry.path().print(&mut output)?;
                     }
                 }
                 Ok(())
