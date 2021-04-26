@@ -1,0 +1,25 @@
+{
+    "version": "0.0.0",
+    "description": "Append, copy, link, and move files using patterns.",
+    "homepage": "https://github.com/olson-sean-k/nym",
+    "license": "MIT",
+    "suggest": {
+        "less": "less"
+    },
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/olson-sean-k/nym/releases/download/v0.0.0/nym_v0.0.0_x86_64-pc-windows-gnu.zip",
+            "extract_dir": "nym_v0.0.0_x86_64-pc-windows-gnu"
+        }
+    },
+    "bin": "nym.exe",
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/olson-sean-k/nym/releases/download/v$version/nym_v$version_x86_64-pc-windows-gnu.zip",
+                "extract_dir": "nym_v$version_x86_64-pc-windows-gnu"
+            }
+        }
+    }
+}

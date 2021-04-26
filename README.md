@@ -226,9 +226,10 @@ cargo install nym-cli --locked --force
 
 The following table describes packages that can be used to install `nym`.
 
-| Platform   | Package                      |
-|------------|------------------------------|
-| Arch (AUR) | [`nym-git`][pkg-aur-nym-git] |
+| Platform          | Package                      |
+|-------------------|------------------------------|
+| [Arch (AUR)][AUR] | [`nym-git`][pkg-aur-nym-git] |
+| [Scoop][Scoop]    | [`nym`][pkg-scoop-nym]       |
 
 ## Disclaimer
 
@@ -237,12 +238,15 @@ experimental and likely has bugs. Data loss may occur. **Use at your own risk.**
 
 [repository]: https://github.com/olson-sean-k/nym
 
+[AUR]: https://aur.archlinux.org
 [BLAKE3]: https://github.com/BLAKE3-team/BLAKE3
 [crates.io]: https://crates.io
 [features]: https://doc.rust-lang.org/cargo/reference/features.html
-[rustup]: https://rustup.rs/
+[rustup]: https://rustup.rs
+[Scoop]: https://scoop.sh
 
 [`nym`]: https://crates.io/crates/nym
 [`nym-cli`]: https://crates.io/crates/nym-cli
 
 [pkg-aur-nym-git]: https://aur.archlinux.org/packages/nym-git/
+[pkg-scoop-nym]: https://github.com/ScoopInstaller/Main/blob/master/bucket/nym.json
