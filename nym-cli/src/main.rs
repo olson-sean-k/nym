@@ -114,7 +114,7 @@ struct CommonOptionGroup {
     /// Pager command line.
     #[structopt(
         long = "pager",
-        default_value = "less -R --no-init --quit-if-one-screen"
+        default_value = "less -R --no-init --quit-if-one-screen --quit-on-intr"
     )]
     pager: ChildCommand,
     /// Determines if and when color and style is enabled in output.
