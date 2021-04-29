@@ -103,17 +103,12 @@ struct CommonOptionGroup {
     /// is no traversal into directories).
     #[structopt(long = "depth", default_value = "255")]
     depth: usize,
-    /// Perform operations without interactive prompts and ignoring warnings.
-    #[structopt(long = "force", short = "f")]
-    force: bool,
-    /// Do not print additional information nor warnings.
-    #[structopt(long = "quiet", short = "q")]
-    quiet: bool,
     /// Determines if and when non-error output is routed to a configured pager.
     ///
     /// One of "always", "never", or "automatic" (or its abbreviation "auto").
     /// When "automatic", output is only routed to the configured pager if
-    /// attached to an attended terminal (not piped).
+    /// standard output is attached to an attended terminal (not piped,
+    /// redirected, etc.).
     #[structopt(long = "paging", default_value = "automatic")]
     paging: Toggle,
     /// Pager command line.
@@ -135,7 +130,21 @@ struct CommonOptionGroup {
 #[structopt(rename_all = "kebab-case")]
 struct TransformOptionGroup {
     #[structopt(flatten)]
-    options: CommonOptionGroup,
+    common: CommonOptionGroup,
+    /// Determines if and when interactive prompts are used.
+    ///
+    /// One of "always", "never", or "automatic" (or its abbreviation "auto").
+    /// When "automatic", prompts are used if standard error is attached to an
+    /// attended terminal (not piped, redirected, etc.).
+    ///
+    /// Note that if standard error is piped or redirected and this option is
+    /// "always", then prompts will default to taking no action and commands
+    /// will never be executed.
+    #[structopt(long = "interactive", default_value = "always")]
+    interactive: Toggle,
+    /// Do not print manifests nor warnings.
+    #[structopt(long = "quiet", short = "q")]
+    quiet: bool,
     /// Overwrite existing files resolved by to-patterns.
     #[structopt(long = "overwrite", short = "w")]
     overwrite: bool,
@@ -187,9 +196,9 @@ impl Command {
         match self {
             Command::Append { ref options, .. }
             | Command::Copy { ref options, .. }
-            | Command::Move { ref options, .. } => &options.options,
+            | Command::Move { ref options, .. } => &options.common,
             Command::Link { ref link, .. } => match link {
-                Link::Hard { ref options, .. } | Link::Soft { ref options, .. } => &options.options,
+                Link::Hard { ref options, .. } | Link::Soft { ref options, .. } => &options.common,
             },
             Command::Find { ref options, .. } => options,
         }
@@ -245,19 +254,21 @@ where
         overwrite: options.overwrite,
     });
     let (from, to) = transform.parse()?;
-    let options = &mut options.options;
 
     let transform = environment.transform(from, to);
     let actuator = environment.actuator();
-    let manifest: Manifest<A::Routing> = transform.read(&options.directory, options.depth + 1)?;
+    let manifest: Manifest<A::Routing> =
+        transform.read(&options.common.directory, options.common.depth + 1)?;
 
     if !options.quiet {
-        Terminal::with_output_process_scoped(&mut options.pager, options.paging, |mut output| {
-            manifest.print(&mut output)
-        })?;
+        Terminal::with_output_process_scoped(
+            &mut options.common.pager,
+            options.common.paging,
+            |mut output| manifest.print(&mut output),
+        )?;
         terminal::warning(WARNING_TRANSFORM)?;
     }
-    if options.force
+    if !terminal::is_interactive(options.interactive)
         || terminal::confirm(format!(
             "Ready to {} into {} files. Continue?",
             A::LABEL,

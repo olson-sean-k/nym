@@ -405,6 +405,14 @@ pub fn confirm(prompt: impl AsRef<str>) -> io::Result<bool> {
         .interact()
 }
 
+pub fn is_interactive(toggle: Toggle) -> bool {
+    match toggle {
+        Toggle::Always => true,
+        Toggle::Automatic => Term::stderr().features().is_attended(),
+        Toggle::Never => false,
+    }
+}
+
 pub fn toggle_color_output(toggle: Toggle) {
     let (output, error) = match toggle {
         Toggle::Always => (true, true),
