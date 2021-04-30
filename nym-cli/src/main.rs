@@ -109,11 +109,12 @@ struct CommonOptionGroup {
     /// When "automatic", output is only routed to the configured pager if
     /// standard output is attached to an attended terminal (not piped,
     /// redirected, etc.).
-    #[structopt(long = "paging", default_value = "automatic")]
+    #[structopt(long = "paging", value_name = "when", default_value = "automatic")]
     paging: Toggle,
     /// Pager command line.
     #[structopt(
         long = "pager",
+        value_name = "command",
         default_value = "less -R --no-init --quit-if-one-screen --quit-on-intr"
     )]
     pager: ChildCommand,
@@ -122,7 +123,7 @@ struct CommonOptionGroup {
     /// One of "always", "never", or "automatic" (or its abbreviation "auto").
     /// When "automatic", output is colored and styled based on the CLI colors
     /// specification: https://bixense.com/clicolors/
-    #[structopt(long = "color", default_value = "automatic")]
+    #[structopt(long = "color", value_name = "when", default_value = "automatic")]
     color: Toggle,
 }
 
@@ -140,7 +141,7 @@ struct TransformOptionGroup {
     /// Note that if standard error is piped or redirected and this option is
     /// "always", then prompts will default to taking no action and commands
     /// will never be executed.
-    #[structopt(long = "interactive", default_value = "always")]
+    #[structopt(long = "interactive", value_name = "when", default_value = "always")]
     interactive: Toggle,
     /// Do not print manifests nor warnings.
     #[structopt(long = "quiet", short = "q")]
