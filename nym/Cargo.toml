@@ -19,14 +19,15 @@ categories = [
 [features]
 default = [
     'property-b3sum',
-    'property-ts'
+    'property-md5sum',
 ]
 property-b3sum = ['blake3']
-property-ts = ['filetime']
+property-md5sum = ['md5']
 
 [dependencies]
 bimap = "^0.6.0"
 bstr = "^0.2.0"
+chrono = "^0.4.0"
 faccess = "^0.2.0"
 itertools = "^0.10.0"
 nom = "^6.1.0"
@@ -41,8 +42,8 @@ walkdir = "^2.3.0"
 version = "^0.3.0"
 optional = true
 
-[dependencies.filetime]
-version = "^0.2.0"
+[dependencies.md5]
+version = "^0.7.0"
 optional = true
 
 [target.'cfg(target_os = "windows")'.dependencies.path-slash]

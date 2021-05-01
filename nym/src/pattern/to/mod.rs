@@ -1,15 +1,18 @@
 mod token;
 
+use chrono::offset::Local;
+use chrono::DateTime;
 use std::borrow::Cow;
 use std::path::Path;
 use std::str::{self, FromStr};
 
-use crate::fmt;
 use crate::glob::Captures;
 use crate::pattern::to::token::{
-    Capture, Condition, Formatter, Identifier, NonEmptyCase, Subject, Substitution, Token,
+    Capture, Condition, Identifier, NonEmptyCase, PropertyFormat, Subject, Substitution,
+    TextFormatter, Token,
 };
 use crate::pattern::PatternError;
+use crate::text;
 
 #[derive(Clone, Debug)]
 pub struct ToPattern<'t> {
@@ -27,10 +30,9 @@ impl<'t> ToPattern<'t> {
         ToPattern { tokens }
     }
 
-    #[allow(unused_imports)]
     pub fn resolve(
         &self,
-        #[allow(unused_variables)] source: impl AsRef<Path>,
+        source: impl AsRef<Path>,
         captures: &Captures<'_>,
     ) -> Result<String, PatternError> {
         use std::fs;
@@ -39,16 +41,19 @@ impl<'t> ToPattern<'t> {
         use crate::pattern::to::token::Property;
 
         #[cfg(feature = "property-b3sum")]
-        let mut b3sum = Memoized::from(|| {
-            fs::read(source.as_ref())
-                .map(|data| blake3::hash(data.as_ref()).to_hex().as_str().to_owned())
-        });
-        #[cfg(feature = "property-ts")]
-        let mut timestamp = Memoized::from(|| {
-            use filetime::FileTime;
-
+        let mut b3sum =
+            Memoized::from(|| fs::read(source.as_ref()).map(|data| blake3::hash(data.as_ref())));
+        let mut ctime = Memoized::from(|| {
             fs::metadata(source.as_ref())
-                .map(|metadata| format!("{}", FileTime::from_last_modification_time(&metadata)))
+                .and_then(|metadata| metadata.created())
+                .map(DateTime::<Local>::from)
+        });
+        #[cfg(feature = "property-md5sum")]
+        let mut md5sum = Memoized::from(|| fs::read(source.as_ref()).map(md5::compute));
+        let mut mtime = Memoized::from(|| {
+            fs::metadata(source.as_ref())
+                .and_then(|metadata| metadata.modified())
+                .map(DateTime::<Local>::from)
         });
         let mut output = String::new();
         for token in &self.tokens {
@@ -82,23 +87,24 @@ impl<'t> ToPattern<'t> {
                             };
                             (capture, condition.as_ref())
                         }
-                        #[allow(unreachable_code)]
-                        #[allow(unreachable_patterns)]
                         Subject::Property(ref property) => (
                             match *property {
                                 #[cfg(feature = "property-b3sum")]
-                                Property::B3Sum => {
-                                    b3sum.get().map_err(PatternError::Property)?.into()
+                                Property::B3Sum(ref fmt) => {
+                                    b3sum.get().map_err(PatternError::Property)?.fmt(fmt).into()
                                 }
-                                #[cfg(feature = "property-ts")]
-                                Property::Timestamp => {
-                                    timestamp.get().map_err(PatternError::Property)?.into()
+                                Property::CTime(ref fmt) => {
+                                    ctime.get().map_err(PatternError::Property)?.fmt(fmt).into()
                                 }
-                                #[cfg(not(any(
-                                    feature = "property-b3sum",
-                                    feature = "property-ts"
-                                )))]
-                                _ => unreachable!(),
+                                #[cfg(feature = "property-md5sum")]
+                                Property::Md5Sum(ref fmt) => md5sum
+                                    .get()
+                                    .map_err(PatternError::Property)?
+                                    .fmt(fmt)
+                                    .into(),
+                                Property::MTime(ref fmt) => {
+                                    mtime.get().map_err(PatternError::Property)?.fmt(fmt).into()
+                                }
                             },
                             None,
                         ),
@@ -125,7 +131,7 @@ impl FromStr for ToPattern<'static> {
 fn substitute<'t>(
     text: &'t str,
     condition: Option<&Condition<'t>>,
-    formatters: &[Formatter],
+    formatters: &[TextFormatter],
 ) -> Cow<'t, str> {
     let text: Cow<str> = if let Some(condition) = condition {
         match (text.is_empty(), &condition.non_empty, &condition.empty) {
@@ -150,13 +156,13 @@ fn substitute<'t>(
         let mut text = text.into_owned();
         for formatter in formatters {
             text = match *formatter {
-                Formatter::Pad {
+                TextFormatter::Pad {
                     shim,
                     alignment,
                     width,
-                } => fmt::pad(&text, shim, alignment, width).into_owned(),
-                Formatter::Lower => text.to_lowercase(),
-                Formatter::Upper => text.to_uppercase(),
+                } => text::pad(&text, shim, alignment, width).into_owned(),
+                TextFormatter::Lower => text.to_lowercase(),
+                TextFormatter::Upper => text.to_uppercase(),
             };
         }
         text.into()

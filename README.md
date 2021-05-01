@@ -162,22 +162,36 @@ Properties include source file metadata in the destination path and are
 specified by name following an exclamation mark `!`. Property names are case
 insensitive. Supported properties are described in the following table.
 
-| Pattern    | Metadata                               | Cargo Feature              |
-|------------|----------------------------------------|----------------------------|
-| `{!b3sum}` | [BLAKE3] hash of the source file.      | `property-b3sum` (default) |
-| `{!ts}`    | Modified timestamp of the source file. | `property-ts` (default)    |
+| Pattern     | Metadata               | Format    | Cargo Feature               |
+|-------------|------------------------|-----------|-----------------------------|
+| `{!b3sum}`  | [BLAKE3] hash digest   | digest    | `property-b3sum` (default)  |
+| `{!ctime}`  | creation timestamp     | date-time | n/a                         |
+| `{!md5sum}` | [MD5] hash digest      | digest    | `property-md5sum` (default) |
+| `{!mtime}`  | modification timestamp | date-time | n/a                         |
 
-For example, `{!b3sum}` is replaced by the [BLAKE3] hash of the matched file.
+For example, `{!b3sum}` is replaced by the [BLAKE3] hash digest of the matched
+file.
+
+Properties are associated with a data type and corresponding format that
+transforms their output into the output text of a substitution. Formats are
+optionally specified after a property name following a colon `:` and delimited
+by square brackets `[...]`. For example, the pattern `{!mtime:[%Y]}` outputs the
+text of the four-digit year of a source file's modification timestamp. The
+date-time data type uses a [`strftime`]-like format.
 
 Properties may require additional dependencies and some can be toggled in a
 build using [Cargo features][features].
 
-### Formatters
+### Text Formatters
 
-Substitutions (both captures and properties) support optional formatters.
-Formatters must appear last in a substitution following a vertical bar `|`.
-Formatters are separated by commas `,`. Any number of formatters may be used and
-are applied in the order in which they appear.
+Substitutions (both captures and properties) support optional text formatters.
+Text formatters must appear last in a substitution following a vertical bar `|`.
+Any number of text formatters may be used separated by commas `,` and they are
+applied from left to right in the order in which they appear.
+
+Text formatters are distinct from property formats and, as their name suggests,
+operate exlusively on the output text of a substitution (they do not operate on
+non-textual data).
 
 The pad formatter pads substitution text to a specified width and alignment
 using the given character shim. For example, `{#1|>4[0]}` pads the substition
@@ -240,7 +254,9 @@ experimental and likely has bugs. Data loss may occur. **Use at your own risk.**
 [BLAKE3]: https://github.com/BLAKE3-team/BLAKE3
 [crates.io]: https://crates.io
 [features]: https://doc.rust-lang.org/cargo/reference/features.html
+[MD5]: https://en.wikipedia.org/wiki/MD5
 [rustup]: https://rustup.rs/
+[`strftime`]: https://docs.rs/chrono/0.4.19/chrono/format/strftime/index.html
 
 [`nym`]: https://crates.io/crates/nym
 [`nym-cli`]: https://crates.io/crates/nym-cli

@@ -63,10 +63,8 @@ impl Program {
             } => {
                 let from = FromPattern::from(Glob::parse(from)?);
                 let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
-                for entry in from.read(&options.directory, options.depth + 1) {
-                    if let Ok(entry) = entry {
-                        entry.path().print(&mut output)?;
-                    }
+                for entry in from.read(&options.directory, options.depth + 1).flatten() {
+                    entry.path().print(&mut output)?;
                 }
                 Ok(())
             }

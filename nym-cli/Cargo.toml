@@ -25,10 +25,10 @@ path = "src/main.rs"
 [features]
 default = [
     'property-b3sum',
-    'property-ts'
+    'property-md5sum',
 ]
 property-b3sum = ['nym/property-b3sum']
-property-ts = ['nym/property-ts']
+property-md5sum = ['nym/property-md5sum']
 
 [dependencies]
 anyhow = "^1.0.0"

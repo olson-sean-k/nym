@@ -34,12 +34,12 @@ pub fn pad(text: &str, shim: char, alignment: Alignment, width: usize) -> Cow<st
 
 #[cfg(test)]
 mod tests {
-    use crate::fmt::{self, Alignment};
+    use crate::text::{self, Alignment};
 
     #[test]
     fn pad_left() {
         assert_eq!(
-            fmt::pad("text", ' ', Alignment::Left, 8).as_ref(),
+            text::pad("text", ' ', Alignment::Left, 8).as_ref(),
             "text    "
         );
     }
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn pad_right() {
         assert_eq!(
-            fmt::pad("text", ' ', Alignment::Right, 8).as_ref(),
+            text::pad("text", ' ', Alignment::Right, 8).as_ref(),
             "    text"
         );
     }
@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn pad_center() {
         assert_eq!(
-            fmt::pad("text", ' ', Alignment::Center, 8).as_ref(),
+            text::pad("text", ' ', Alignment::Center, 8).as_ref(),
             "  text  "
         );
     }
@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn pad_left_overflow() {
         assert_eq!(
-            fmt::pad("too much text", ' ', Alignment::Left, 8).as_ref(),
+            text::pad("too much text", ' ', Alignment::Left, 8).as_ref(),
             "too much text"
         );
     }

@@ -4,9 +4,9 @@
 
 pub mod actuator;
 pub mod environment;
-pub mod fmt;
 pub mod glob;
 pub mod manifest;
 pub mod memoize;
 pub mod pattern;
+pub mod text;
 pub mod transform;

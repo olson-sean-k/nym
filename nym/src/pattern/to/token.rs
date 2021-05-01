@@ -1,8 +1,10 @@
+use chrono::{DateTime, TimeZone};
 use std::borrow::Cow;
+use std::fmt::Display;
 use std::num::ParseIntError;
 
-use crate::fmt::Alignment;
 use crate::pattern::PatternError;
+use crate::text::Alignment;
 
 #[derive(Clone, Debug)]
 pub enum Identifier<'t> {
@@ -93,7 +95,7 @@ impl<'t> Condition<'t> {
 #[derive(Clone, Debug)]
 pub struct Substitution<'t> {
     pub subject: Subject<'t>,
-    pub formatters: Vec<Formatter>,
+    pub formatters: Vec<TextFormatter>,
 }
 
 impl<'t> Substitution<'t> {
@@ -112,14 +114,14 @@ impl<'t> Substitution<'t> {
 #[derive(Clone, Debug)]
 pub enum Subject<'t> {
     Capture(Capture<'t>),
-    Property(Property),
+    Property(Property<'t>),
 }
 
 impl<'t> Subject<'t> {
     pub fn into_owned(self) -> Subject<'static> {
         match self {
             Subject::Capture(capture) => capture.into_owned().into(),
-            Subject::Property(property) => property.into(),
+            Subject::Property(property) => property.into_owned().into(),
         }
     }
 }
@@ -130,14 +132,14 @@ impl<'t> From<Capture<'t>> for Subject<'t> {
     }
 }
 
-impl From<Property> for Subject<'static> {
-    fn from(property: Property) -> Self {
+impl<'t> From<Property<'t>> for Subject<'t> {
+    fn from(property: Property<'t>) -> Self {
         Subject::Property(property)
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum Formatter {
+pub enum TextFormatter {
     Pad {
         shim: char,
         alignment: Alignment,
@@ -166,12 +168,99 @@ impl<'t> Capture<'t> {
     }
 }
 
+pub trait PropertyFormat<M> {
+    fn fmt(&self, fmt: &M) -> String;
+}
+
+// Numeric formats that include alphabetic characters are always lowercase where
+// applicable.
+#[derive(Clone, Copy, Debug)]
+pub enum DigestFormat {
+    Hexadecimal,
+}
+
+impl Default for DigestFormat {
+    fn default() -> Self {
+        DigestFormat::Hexadecimal
+    }
+}
+
+#[cfg(feature = "property-b3sum")]
+impl PropertyFormat<DigestFormat> for blake3::Hash {
+    fn fmt(&self, fmt: &DigestFormat) -> String {
+        match fmt {
+            DigestFormat::Hexadecimal => self.to_hex().as_str().to_owned(),
+        }
+    }
+}
+
+#[cfg(feature = "property-md5sum")]
+impl PropertyFormat<DigestFormat> for md5::Digest {
+    fn fmt(&self, fmt: &DigestFormat) -> String {
+        match fmt {
+            DigestFormat::Hexadecimal => format!("{:x}", self),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
-pub enum Property {
+pub struct DateTimeFormat<'t> {
+    fmt: Cow<'t, str>,
+}
+
+impl<'t> DateTimeFormat<'t> {
+    pub fn into_owned(self) -> DateTimeFormat<'static> {
+        DateTimeFormat {
+            fmt: self.fmt.into_owned().into(),
+        }
+    }
+}
+
+impl<'t> Default for DateTimeFormat<'t> {
+    fn default() -> Self {
+        DateTimeFormat {
+            fmt: "%F-%X".into(),
+        }
+    }
+}
+
+impl<'t> From<Cow<'t, str>> for DateTimeFormat<'t> {
+    fn from(fmt: Cow<'t, str>) -> Self {
+        DateTimeFormat { fmt }
+    }
+}
+
+impl<'t, Z> PropertyFormat<DateTimeFormat<'t>> for DateTime<Z>
+where
+    Z: TimeZone,
+    Z::Offset: Display,
+{
+    fn fmt(&self, fmt: &DateTimeFormat<'t>) -> String {
+        self.format(fmt.fmt.as_ref()).to_string()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Property<'t> {
     #[cfg(feature = "property-b3sum")]
-    B3Sum,
-    #[cfg(feature = "property-ts")]
-    Timestamp,
+    B3Sum(DigestFormat),
+    CTime(DateTimeFormat<'t>),
+    #[cfg(feature = "property-md5sum")]
+    Md5Sum(DigestFormat),
+    MTime(DateTimeFormat<'t>),
+}
+
+impl<'t> Property<'t> {
+    pub fn into_owned(self) -> Property<'static> {
+        match self {
+            #[cfg(feature = "property-b3sum")]
+            Property::B3Sum(fmt) => Property::B3Sum(fmt),
+            Property::CTime(fmt) => Property::CTime(fmt.into_owned()),
+            #[cfg(feature = "property-md5sum")]
+            Property::Md5Sum(fmt) => Property::Md5Sum(fmt),
+            Property::MTime(fmt) => Property::MTime(fmt.into_owned()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -250,6 +339,10 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         )
     }
 
+    /// Parses an argument.
+    ///
+    /// An argument is arbitrary text delimited by square brackets. Within an
+    /// argument, square brackets may be escaped with a back slash.
     fn argument<'i, E>(input: &'i str) -> IResult<&'i str, Cow<'i, str>, E>
     where
         E: ParseError<&'i str>,
@@ -274,7 +367,7 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         branch::alt((
             combinator::map_res(
                 sequence::preceded(character::char('#'), character::digit1),
-                |text: &'i str| usize::from_str_radix(text, 10).map(Identifier::from),
+                |text: &'i str| text.parse::<usize>().map(Identifier::from),
             ),
             combinator::map(
                 sequence::preceded(character::char('@'), argument),
@@ -314,7 +407,8 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         )(input)
     }
 
-    fn formatters<'i, E>(input: &'i str) -> IResult<&'i str, Vec<Formatter>, E>
+    /// Parses a sequence of text formatters.
+    fn formatters<'i, E>(input: &'i str) -> IResult<&'i str, Vec<TextFormatter>, E>
     where
         E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
     {
@@ -331,7 +425,7 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
                                 combinator::value(Alignment::Right, bytes::tag(">")),
                             )),
                             combinator::map_res(character::digit1, |text: &'i str| {
-                                usize::from_str_radix(text, 10)
+                                text.parse::<usize>()
                             }),
                             bracketed(branch::alt((
                                 character::none_of("[]\\"),
@@ -342,19 +436,21 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
                                 )),
                             ))),
                         )),
-                        |(alignment, width, shim)| Formatter::Pad {
+                        |(alignment, width, shim)| TextFormatter::Pad {
                             shim,
                             alignment,
                             width,
                         },
                     ),
-                    combinator::value(Formatter::Lower, bytes::tag_no_case("l")),
-                    combinator::value(Formatter::Upper, bytes::tag_no_case("u")),
+                    combinator::value(TextFormatter::Lower, bytes::tag_no_case("l")),
+                    combinator::value(TextFormatter::Upper, bytes::tag_no_case("u")),
                 )),
             ),
         )(input)
     }
 
+    /// Parses a capture substition (identifier, condition, and text
+    /// formatters).
     fn capture<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
     where
         E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
@@ -377,24 +473,45 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         )(input)
     }
 
-    #[cfg(any(feature = "property-b3sum", feature = "property-ts"))]
+    /// Parses a property substitution (property format and text formatters).
     fn property<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>
     where
         E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
     {
+        /// Parses a property format that can be constructed from argument text.
+        fn fmt_from_str<'i, T, E>(input: &'i str) -> IResult<&'i str, T, E>
+        where
+            T: Default + From<Cow<'i, str>>,
+            E: FromExternalError<&'i str, ParseIntError> + ParseError<&'i str>,
+        {
+            combinator::map(
+                combinator::opt(sequence::preceded(bytes::tag(":"), argument)),
+                |text| text.map(T::from).unwrap_or_default(),
+            )(input)
+        }
+
         combinator::map(
             braced(sequence::tuple((
                 sequence::preceded(
                     character::char('!'),
-                    #[cfg(all(feature = "property-b3sum", feature = "property-ts"))]
                     branch::alt((
-                        combinator::map(bytes::tag_no_case("b3sum"), |_| Property::B3Sum),
-                        combinator::map(bytes::tag_no_case("ts"), |_| Property::Timestamp),
+                        #[cfg(feature = "property-b3sum")]
+                        combinator::map(bytes::tag_no_case("b3sum"), |_| {
+                            Property::B3Sum(Default::default())
+                        }),
+                        sequence::preceded(
+                            bytes::tag_no_case("ctime"),
+                            combinator::map(fmt_from_str, Property::CTime),
+                        ),
+                        #[cfg(feature = "property-md5sum")]
+                        combinator::map(bytes::tag_no_case("md5sum"), |_| {
+                            Property::Md5Sum(Default::default())
+                        }),
+                        sequence::preceded(
+                            bytes::tag_no_case("mtime"),
+                            combinator::map(fmt_from_str, Property::MTime),
+                        ),
                     )),
-                    #[cfg(all(feature = "property-b3sum", not(feature = "property-ts")))]
-                    combinator::map(bytes::tag_no_case("b3sum"), |_| Property::B3Sum),
-                    #[cfg(all(feature = "property-ts", not(feature = "property-b3sum")))]
-                    combinator::map(bytes::tag_no_case("ts"), |_| Property::Timestamp),
                 ),
                 branch::alt((formatters, combinator::success(Vec::new()))),
             ))),
@@ -407,12 +524,7 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
         )(input)
     }
 
-    combinator::all_consuming(multi::many1(branch::alt((
-        literal,
-        capture,
-        #[cfg(any(feature = "property-b3sum", feature = "property-ts"))]
-        property,
-    ))))(text)
-    .map(|(_, tokens)| tokens)
-    .map_err(From::from)
+    combinator::all_consuming(multi::many1(branch::alt((literal, capture, property))))(text)
+        .map(|(_, tokens)| tokens)
+        .map_err(From::from)
 }
