@@ -25,7 +25,7 @@ property-b3sum = ['blake3']
 property-md5sum = ['md5']
 
 [dependencies]
-bimap = "^0.6.0"
+bimap = "^0.6.1"
 bstr = "^0.2.0"
 chrono = "^0.4.0"
 faccess = "^0.2.0"
