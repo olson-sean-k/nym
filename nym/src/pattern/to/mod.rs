@@ -3,12 +3,15 @@ mod token;
 use chrono::offset::Local;
 use chrono::DateTime;
 use std::borrow::Cow;
+use std::convert::TryFrom;
+use std::fs;
 use std::path::Path;
 use std::str::{self, FromStr};
 
 use crate::glob::Captures;
+use crate::memoize::Memoized;
 use crate::pattern::to::token::{
-    Capture, Condition, Identifier, NonEmptyCase, PropertyFormat, Subject, Substitution,
+    Capture, Condition, Identifier, NonEmptyCase, Property, PropertyFormat, Subject, Substitution,
     TextFormatter, Token,
 };
 use crate::pattern::PatternError;
@@ -20,7 +23,7 @@ pub struct ToPattern<'t> {
 }
 
 impl<'t> ToPattern<'t> {
-    pub fn parse(text: &'t str) -> Result<Self, PatternError> {
+    pub fn new(text: &'t str) -> Result<Self, PatternError> {
         token::parse(text).map(|tokens| ToPattern { tokens })
     }
 
@@ -35,11 +38,6 @@ impl<'t> ToPattern<'t> {
         source: impl AsRef<Path>,
         captures: &Captures<'_>,
     ) -> Result<String, PatternError> {
-        use std::fs;
-
-        use crate::memoize::Memoized;
-        use crate::pattern::to::token::Property;
-
         #[cfg(feature = "property-b3sum")]
         let mut b3sum =
             Memoized::from(|| fs::read(source.as_ref()).map(|data| blake3::hash(data.as_ref())));
@@ -120,11 +118,19 @@ impl<'t> ToPattern<'t> {
     }
 }
 
+impl<'t> TryFrom<&'t str> for ToPattern<'t> {
+    type Error = PatternError;
+
+    fn try_from(text: &'t str) -> Result<Self, Self::Error> {
+        ToPattern::new(text)
+    }
+}
+
 impl FromStr for ToPattern<'static> {
     type Err = PatternError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        ToPattern::parse(text).map(|pattern| pattern.into_owned())
+        ToPattern::new(text).map(|pattern| pattern.into_owned())
     }
 }
 
@@ -175,57 +181,57 @@ mod tests {
 
     #[test]
     fn parse_to_pattern() {
-        ToPattern::parse("{}").unwrap();
-        ToPattern::parse("{#1}").unwrap();
-        ToPattern::parse("literal{#1}").unwrap();
-        ToPattern::parse("{#1}literal").unwrap();
+        ToPattern::new("{}").unwrap();
+        ToPattern::new("{#1}").unwrap();
+        ToPattern::new("literal{#1}").unwrap();
+        ToPattern::new("{#1}literal").unwrap();
     }
 
     #[test]
     fn parse_to_pattern_condition() {
-        ToPattern::parse("{#1?:}").unwrap();
-        ToPattern::parse("{#1?[some]:}").unwrap();
-        ToPattern::parse("{#1?[]:}").unwrap();
-        ToPattern::parse("{#1?[prefix],[postfix]:}").unwrap();
-        ToPattern::parse("{#1?:[none]}").unwrap();
-        ToPattern::parse("{#1?[],[-]:[none]}").unwrap();
+        ToPattern::new("{#1?:}").unwrap();
+        ToPattern::new("{#1?[some]:}").unwrap();
+        ToPattern::new("{#1?[]:}").unwrap();
+        ToPattern::new("{#1?[prefix],[postfix]:}").unwrap();
+        ToPattern::new("{#1?:[none]}").unwrap();
+        ToPattern::new("{#1?[],[-]:[none]}").unwrap();
     }
 
     #[test]
     fn parse_to_pattern_formatter() {
-        ToPattern::parse("{#1|>4[0]}").unwrap();
-        ToPattern::parse("{#1|u}").unwrap();
-        ToPattern::parse("{#1|<2[ ],l}").unwrap();
+        ToPattern::new("{#1|>4[0]}").unwrap();
+        ToPattern::new("{#1|u}").unwrap();
+        ToPattern::new("{#1|<2[ ],l}").unwrap();
     }
 
     #[test]
     fn parse_to_pattern_condition_formatter() {
-        ToPattern::parse("{#1?[prefix],[postfix]:[none]|>4[0]}").unwrap();
+        ToPattern::new("{#1?[prefix],[postfix]:[none]|>4[0]}").unwrap();
     }
 
     #[test]
     fn parse_to_pattern_with_escaped_literal() {
-        ToPattern::parse("a/b/file\\{0\\}.ext").unwrap();
-        ToPattern::parse("a/b/file\\[0\\].ext").unwrap();
+        ToPattern::new("a/b/file\\{0\\}.ext").unwrap();
+        ToPattern::new("a/b/file\\[0\\].ext").unwrap();
         // NOTE: Escaping square brackets is not necessary in literals.
-        ToPattern::parse("a/b/file[0].ext").unwrap();
+        ToPattern::new("a/b/file[0].ext").unwrap();
     }
 
     #[test]
     fn parse_to_pattern_with_escaped_argument() {
-        ToPattern::parse("{#1?[\\[\\]]:}").unwrap();
+        ToPattern::new("{#1?[\\[\\]]:}").unwrap();
         // NOTE: Escaping curly braces is not necessary in arguments.
-        ToPattern::parse("{#1?[{}]:[\\{\\}]}").unwrap();
-        ToPattern::parse("{@[capture\\[0\\]]}").unwrap();
+        ToPattern::new("{#1?[{}]:[\\{\\}]}").unwrap();
+        ToPattern::new("{@[capture\\[0\\]]}").unwrap();
     }
 
     #[test]
     fn reject_to_pattern_with_empty_case_surround() {
-        assert!(ToPattern::parse("{#1?:[prefix],[postfix]}").is_err());
+        assert!(ToPattern::new("{#1?:[prefix],[postfix]}").is_err());
     }
 
     #[test]
     fn reject_to_pattern_out_of_order() {
-        assert!(ToPattern::parse("{#1|u?:}").is_err());
+        assert!(ToPattern::new("{#1|u?:}").is_err());
     }
 }

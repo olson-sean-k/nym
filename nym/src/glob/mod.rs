@@ -8,6 +8,7 @@ use nom::error::ErrorKind;
 use os_str_bytes::OsStrBytes as _;
 use regex::bytes::Regex;
 use std::borrow::{Borrow, Cow};
+use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::fs::{FileType, Metadata};
 use std::iter::Fuse;
@@ -437,7 +438,7 @@ impl<'t> Glob<'t> {
         Regex::new(&pattern).expect("glob compilation failed")
     }
 
-    pub fn parse(text: &'t str) -> Result<Self, GlobError> {
+    pub fn new(text: &'t str) -> Result<Self, GlobError> {
         let tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
         rule::check(tokens.iter())?;
         let regex = Glob::compile(tokens.iter());
@@ -533,11 +534,19 @@ impl<'t> Glob<'t> {
     }
 }
 
+impl<'t> TryFrom<&'t str> for Glob<'t> {
+    type Error = GlobError;
+
+    fn try_from(text: &'t str) -> Result<Self, Self::Error> {
+        Glob::new(text)
+    }
+}
+
 impl FromStr for Glob<'static> {
     type Err = GlobError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        Glob::parse(text).map(|glob| glob.into_owned())
+        Glob::new(text).map(|glob| glob.into_owned())
     }
 }
 
@@ -673,206 +682,206 @@ mod tests {
     }
 
     #[test]
-    fn parse_glob_with_eager_zom_tokens() {
-        Glob::parse("*").unwrap();
-        Glob::parse("a/*").unwrap();
-        Glob::parse("*a").unwrap();
-        Glob::parse("a*").unwrap();
-        Glob::parse("a*b").unwrap();
-        Glob::parse("/*").unwrap();
+    fn build_glob_with_eager_zom_tokens() {
+        Glob::new("*").unwrap();
+        Glob::new("a/*").unwrap();
+        Glob::new("*a").unwrap();
+        Glob::new("a*").unwrap();
+        Glob::new("a*b").unwrap();
+        Glob::new("/*").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_lazy_zom_tokens() {
-        Glob::parse("$").unwrap();
-        Glob::parse("a/$").unwrap();
-        Glob::parse("$a").unwrap();
-        Glob::parse("a$").unwrap();
-        Glob::parse("a$b").unwrap();
-        Glob::parse("/$").unwrap();
+    fn build_glob_with_lazy_zom_tokens() {
+        Glob::new("$").unwrap();
+        Glob::new("a/$").unwrap();
+        Glob::new("$a").unwrap();
+        Glob::new("a$").unwrap();
+        Glob::new("a$b").unwrap();
+        Glob::new("/$").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_one_tokens() {
-        Glob::parse("?").unwrap();
-        Glob::parse("a/?").unwrap();
-        Glob::parse("?a").unwrap();
-        Glob::parse("a?").unwrap();
-        Glob::parse("a?b").unwrap();
-        Glob::parse("??a??b??").unwrap();
-        Glob::parse("/?").unwrap();
+    fn build_glob_with_one_tokens() {
+        Glob::new("?").unwrap();
+        Glob::new("a/?").unwrap();
+        Glob::new("?a").unwrap();
+        Glob::new("a?").unwrap();
+        Glob::new("a?b").unwrap();
+        Glob::new("??a??b??").unwrap();
+        Glob::new("/?").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_one_and_zom_tokens() {
-        Glob::parse("?*").unwrap();
-        Glob::parse("*?").unwrap();
-        Glob::parse("*/?").unwrap();
-        Glob::parse("?*?").unwrap();
-        Glob::parse("/?*").unwrap();
-        Glob::parse("?$").unwrap();
+    fn build_glob_with_one_and_zom_tokens() {
+        Glob::new("?*").unwrap();
+        Glob::new("*?").unwrap();
+        Glob::new("*/?").unwrap();
+        Glob::new("?*?").unwrap();
+        Glob::new("/?*").unwrap();
+        Glob::new("?$").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_tree_tokens() {
-        Glob::parse("**").unwrap();
-        Glob::parse("**/").unwrap();
-        Glob::parse("/**").unwrap();
-        Glob::parse("**/a").unwrap();
-        Glob::parse("a/**").unwrap();
-        Glob::parse("**/a/**/b/**").unwrap();
-        Glob::parse("**/**/a").unwrap();
+    fn build_glob_with_tree_tokens() {
+        Glob::new("**").unwrap();
+        Glob::new("**/").unwrap();
+        Glob::new("/**").unwrap();
+        Glob::new("**/a").unwrap();
+        Glob::new("a/**").unwrap();
+        Glob::new("**/a/**/b/**").unwrap();
+        Glob::new("**/**/a").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_class_tokens() {
-        Glob::parse("a/[xy]").unwrap();
-        Glob::parse("a/[x-z]").unwrap();
-        Glob::parse("a/[xyi-k]").unwrap();
-        Glob::parse("a/[i-kxy]").unwrap();
-        Glob::parse("a/[!xy]").unwrap();
-        Glob::parse("a/[!x-z]").unwrap();
-        Glob::parse("a/[xy]b/c").unwrap();
+    fn build_glob_with_class_tokens() {
+        Glob::new("a/[xy]").unwrap();
+        Glob::new("a/[x-z]").unwrap();
+        Glob::new("a/[xyi-k]").unwrap();
+        Glob::new("a/[i-kxy]").unwrap();
+        Glob::new("a/[!xy]").unwrap();
+        Glob::new("a/[!x-z]").unwrap();
+        Glob::new("a/[xy]b/c").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_alternative_tokens() {
-        Glob::parse("a/{x?z,y$}b*").unwrap();
-        Glob::parse("a/{???,x$y,frob}b*").unwrap();
-        Glob::parse("a/{???,x$y,frob}b*").unwrap();
-        Glob::parse("a/{???,{x*z,y$}}b*").unwrap();
-        Glob::parse("a/{**/b,b/**}/ca{t,b/**}").unwrap();
+    fn build_glob_with_alternative_tokens() {
+        Glob::new("a/{x?z,y$}b*").unwrap();
+        Glob::new("a/{???,x$y,frob}b*").unwrap();
+        Glob::new("a/{???,x$y,frob}b*").unwrap();
+        Glob::new("a/{???,{x*z,y$}}b*").unwrap();
+        Glob::new("a/{**/b,b/**}/ca{t,b/**}").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_literal_escaped_wildcard_tokens() {
-        Glob::parse("a/b\\?/c").unwrap();
-        Glob::parse("a/b\\$/c").unwrap();
-        Glob::parse("a/b\\*/c").unwrap();
-        Glob::parse("a/b\\*\\*/c").unwrap();
+    fn build_glob_with_literal_escaped_wildcard_tokens() {
+        Glob::new("a/b\\?/c").unwrap();
+        Glob::new("a/b\\$/c").unwrap();
+        Glob::new("a/b\\*/c").unwrap();
+        Glob::new("a/b\\*\\*/c").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_class_escaped_wildcard_tokens() {
-        Glob::parse("a/b[?]/c").unwrap();
-        Glob::parse("a/b[$]/c").unwrap();
-        Glob::parse("a/b[*]/c").unwrap();
-        Glob::parse("a/b[*][*]/c").unwrap();
+    fn build_glob_with_class_escaped_wildcard_tokens() {
+        Glob::new("a/b[?]/c").unwrap();
+        Glob::new("a/b[$]/c").unwrap();
+        Glob::new("a/b[*]/c").unwrap();
+        Glob::new("a/b[*][*]/c").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_literal_escaped_alternative_tokens() {
-        Glob::parse("a/\\{\\}/c").unwrap();
-        Glob::parse("a/{x,y\\,,z}/c").unwrap();
+    fn build_glob_with_literal_escaped_alternative_tokens() {
+        Glob::new("a/\\{\\}/c").unwrap();
+        Glob::new("a/{x,y\\,,z}/c").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_class_escaped_alternative_tokens() {
-        Glob::parse("a/[{][}]/c").unwrap();
-        Glob::parse("a/{x,y[,],z}/c").unwrap();
+    fn build_glob_with_class_escaped_alternative_tokens() {
+        Glob::new("a/[{][}]/c").unwrap();
+        Glob::new("a/{x,y[,],z}/c").unwrap();
     }
 
     #[test]
-    fn parse_glob_with_literal_escaped_class_tokens() {
-        Glob::parse("a/\\[a-z\\]/c").unwrap();
-        Glob::parse("a/[\\[]/c").unwrap();
-        Glob::parse("a/[\\]]/c").unwrap();
-        Glob::parse("a/[a\\-z]/c").unwrap();
+    fn build_glob_with_literal_escaped_class_tokens() {
+        Glob::new("a/\\[a-z\\]/c").unwrap();
+        Glob::new("a/[\\[]/c").unwrap();
+        Glob::new("a/[\\]]/c").unwrap();
+        Glob::new("a/[a\\-z]/c").unwrap();
     }
 
     #[test]
     fn reject_glob_with_adjacent_tree_or_zom_tokens() {
-        assert!(Glob::parse("***").is_err());
-        assert!(Glob::parse("****").is_err());
-        assert!(Glob::parse("**/*/***").is_err());
-        assert!(Glob::parse("**$").is_err());
-        assert!(Glob::parse("**/$**").is_err());
+        assert!(Glob::new("***").is_err());
+        assert!(Glob::new("****").is_err());
+        assert!(Glob::new("**/*/***").is_err());
+        assert!(Glob::new("**$").is_err());
+        assert!(Glob::new("**/$**").is_err());
     }
 
     #[test]
     fn reject_glob_with_tree_adjacent_literal_tokens() {
-        assert!(Glob::parse("**a").is_err());
-        assert!(Glob::parse("a**").is_err());
-        assert!(Glob::parse("a**b").is_err());
-        assert!(Glob::parse("a*b**").is_err());
-        assert!(Glob::parse("**/**a/**").is_err());
+        assert!(Glob::new("**a").is_err());
+        assert!(Glob::new("a**").is_err());
+        assert!(Glob::new("a**b").is_err());
+        assert!(Glob::new("a*b**").is_err());
+        assert!(Glob::new("**/**a/**").is_err());
     }
 
     #[test]
     fn reject_glob_with_adjacent_one_tokens() {
-        assert!(Glob::parse("**?").is_err());
-        assert!(Glob::parse("?**").is_err());
-        assert!(Glob::parse("?**?").is_err());
-        assert!(Glob::parse("?*?**").is_err());
-        assert!(Glob::parse("**/**?/**").is_err());
+        assert!(Glob::new("**?").is_err());
+        assert!(Glob::new("?**").is_err());
+        assert!(Glob::new("?**?").is_err());
+        assert!(Glob::new("?*?**").is_err());
+        assert!(Glob::new("**/**?/**").is_err());
     }
 
     #[test]
     fn reject_glob_with_unescaped_meta_characters_in_class_tokens() {
-        assert!(Glob::parse("a/[a-z-]/c").is_err());
-        assert!(Glob::parse("a/[-a-z]/c").is_err());
-        assert!(Glob::parse("a/[-]/c").is_err());
+        assert!(Glob::new("a/[a-z-]/c").is_err());
+        assert!(Glob::new("a/[-a-z]/c").is_err());
+        assert!(Glob::new("a/[-]/c").is_err());
         // NOTE: Without special attention to escaping and character parsing,
         //       this could be mistakenly interpreted as an empty range over the
         //       character `-`. This should be rejected.
-        assert!(Glob::parse("a/[---]/c").is_err());
-        assert!(Glob::parse("a/[[]/c").is_err());
-        assert!(Glob::parse("a/[]]/c").is_err());
+        assert!(Glob::new("a/[---]/c").is_err());
+        assert!(Glob::new("a/[[]/c").is_err());
+        assert!(Glob::new("a/[]]/c").is_err());
     }
 
     #[test]
     fn reject_glob_with_invalid_alternative_zom_tokens() {
-        assert!(Glob::parse("*{okay,*}").is_err());
-        assert!(Glob::parse("{okay,*}*").is_err());
-        assert!(Glob::parse("${okay,*error}").is_err());
-        assert!(Glob::parse("{okay,error*}$").is_err());
+        assert!(Glob::new("*{okay,*}").is_err());
+        assert!(Glob::new("{okay,*}*").is_err());
+        assert!(Glob::new("${okay,*error}").is_err());
+        assert!(Glob::new("{okay,error*}$").is_err());
     }
 
     #[test]
     fn reject_glob_with_invalid_alternative_tree_tokens() {
-        assert!(Glob::parse("{**}").is_err());
-        assert!(Glob::parse("prefix{okay/**,**/error}").is_err());
-        assert!(Glob::parse("{**/okay,error/**}postfix").is_err());
-        assert!(Glob::parse("{**/okay,prefix{error/**}}postfix").is_err());
-        assert!(Glob::parse("{**/okay,prefix{**/error}}postfix").is_err());
+        assert!(Glob::new("{**}").is_err());
+        assert!(Glob::new("prefix{okay/**,**/error}").is_err());
+        assert!(Glob::new("{**/okay,error/**}postfix").is_err());
+        assert!(Glob::new("{**/okay,prefix{error/**}}postfix").is_err());
+        assert!(Glob::new("{**/okay,prefix{**/error}}postfix").is_err());
     }
 
     #[test]
     fn literal_path_prefix() {
         assert_eq!(
-            Glob::parse("/a/b").unwrap().literal_path_prefix(),
+            Glob::new("/a/b").unwrap().literal_path_prefix(),
             Some(Path::new("/a/b").to_path_buf()),
         );
         assert_eq!(
-            Glob::parse("a/b").unwrap().literal_path_prefix(),
+            Glob::new("a/b").unwrap().literal_path_prefix(),
             Some(Path::new("a/b").to_path_buf()),
         );
         assert_eq!(
-            Glob::parse("a/*").unwrap().literal_path_prefix(),
+            Glob::new("a/*").unwrap().literal_path_prefix(),
             Some(Path::new("a/").to_path_buf()),
         );
         assert_eq!(
-            Glob::parse("a/*b").unwrap().literal_path_prefix(),
+            Glob::new("a/*b").unwrap().literal_path_prefix(),
             Some(Path::new("a/").to_path_buf()),
         );
         assert_eq!(
-            Glob::parse("a/b*").unwrap().literal_path_prefix(),
+            Glob::new("a/b*").unwrap().literal_path_prefix(),
             Some(Path::new("a/").to_path_buf()),
         );
         assert_eq!(
-            Glob::parse("a/b/*/c").unwrap().literal_path_prefix(),
+            Glob::new("a/b/*/c").unwrap().literal_path_prefix(),
             Some(Path::new("a/b/").to_path_buf()),
         );
 
-        assert!(Glob::parse("**").unwrap().literal_path_prefix().is_none());
-        assert!(Glob::parse("a*").unwrap().literal_path_prefix().is_none());
-        assert!(Glob::parse("*/b").unwrap().literal_path_prefix().is_none());
-        assert!(Glob::parse("a?/b").unwrap().literal_path_prefix().is_none());
+        assert!(Glob::new("**").unwrap().literal_path_prefix().is_none());
+        assert!(Glob::new("a*").unwrap().literal_path_prefix().is_none());
+        assert!(Glob::new("*/b").unwrap().literal_path_prefix().is_none());
+        assert!(Glob::new("a?/b").unwrap().literal_path_prefix().is_none());
     }
 
     #[test]
     fn match_glob_with_tree_tokens() {
-        let glob = Glob::parse("a/**/b").unwrap();
+        let glob = Glob::new("a/**/b").unwrap();
 
         assert!(glob.is_match(Path::new("a/b")));
         assert!(glob.is_match(Path::new("a/x/b")));
@@ -892,7 +901,7 @@ mod tests {
 
     #[test]
     fn match_glob_with_tree_and_zom_tokens() {
-        let glob = Glob::parse("**/*.ext").unwrap();
+        let glob = Glob::new("**/*.ext").unwrap();
 
         assert!(glob.is_match(Path::new("file.ext")));
         assert!(glob.is_match(Path::new("a/file.ext")));
@@ -906,7 +915,7 @@ mod tests {
 
     #[test]
     fn match_glob_with_eager_and_lazy_zom_tokens() {
-        let glob = Glob::parse("$-*.*").unwrap();
+        let glob = Glob::new("$-*.*").unwrap();
 
         assert!(glob.is_match(Path::new("prefix-file.ext")));
         assert!(glob.is_match(Path::new("a-b-c.ext")));
@@ -920,7 +929,7 @@ mod tests {
 
     #[test]
     fn match_glob_with_class_tokens() {
-        let glob = Glob::parse("a/[xyi-k]/**").unwrap();
+        let glob = Glob::new("a/[xyi-k]/**").unwrap();
 
         assert!(glob.is_match(Path::new("a/x/file.ext")));
         assert!(glob.is_match(Path::new("a/y/file.ext")));
@@ -935,7 +944,7 @@ mod tests {
 
     #[test]
     fn match_glob_with_literal_escaped_class_tokens() {
-        let glob = Glob::parse("a/[\\[\\]\\-]/**").unwrap();
+        let glob = Glob::new("a/[\\[\\]\\-]/**").unwrap();
 
         assert!(glob.is_match(Path::new("a/[/file.ext")));
         assert!(glob.is_match(Path::new("a/]/file.ext")));
@@ -950,7 +959,7 @@ mod tests {
 
     #[test]
     fn match_glob_with_alternative_tokens() {
-        let glob = Glob::parse("a/{x?z,y$}b/*").unwrap();
+        let glob = Glob::new("a/{x?z,y$}b/*").unwrap();
 
         assert!(glob.is_match(Path::new("a/xyzb/file.ext")));
         assert!(glob.is_match(Path::new("a/yb/file.ext")));
@@ -966,7 +975,7 @@ mod tests {
 
     #[test]
     fn match_glob_with_nested_alternative_tokens() {
-        let glob = Glob::parse("a/{y$,{x?z,?z}}b/*").unwrap();
+        let glob = Glob::new("a/{y$,{x?z,?z}}b/*").unwrap();
 
         let path = BytePath::from_path(Path::new("a/xyzb/file.ext"));
         let captures = glob.captures(&path).unwrap();
@@ -975,7 +984,7 @@ mod tests {
 
     #[test]
     fn match_glob_with_alternative_tree_tokens() {
-        let glob = Glob::parse("a/{foo,bar,**/baz}/qux").unwrap();
+        let glob = Glob::new("a/{foo,bar,**/baz}/qux").unwrap();
 
         assert!(glob.is_match(Path::new("a/foo/qux")));
         assert!(glob.is_match(Path::new("a/foo/baz/qux")));
