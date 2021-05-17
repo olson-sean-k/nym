@@ -67,6 +67,8 @@ where
         right: Option<&Token<'t>>,
     ) -> Result<(), RuleError> {
         match terminals {
+            // TODO: Do not consider this an error and instead detect this in
+            //       `token::optimize` and replace `{...,**,...}` with `**`.
             Only(Wildcard(Tree)) => {
                 // Disallow singular tree tokens.
                 //

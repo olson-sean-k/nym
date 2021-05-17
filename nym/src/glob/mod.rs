@@ -12,7 +12,7 @@ use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::fs::{FileType, Metadata};
 use std::iter::Fuse;
-use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
+use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
@@ -452,13 +452,13 @@ impl<'t> Glob<'t> {
     }
 
     pub fn is_absolute(&self) -> bool {
-        self.literal_path_prefix()
+        token::literal_path_prefix(self.tokens.iter())
             .map(|prefix| prefix.is_absolute())
             .unwrap_or(false)
     }
 
     pub fn has_root(&self) -> bool {
-        self.literal_path_prefix()
+        token::literal_path_prefix(self.tokens.iter())
             .map(|prefix| prefix.has_root())
             .unwrap_or(false)
     }
@@ -480,7 +480,7 @@ impl<'t> Glob<'t> {
         // The directory tree is traversed from `root`, which may include a path
         // prefix from the glob pattern. `Read` patterns are only applied to
         // path components following the `prefix` in `root`.
-        let (prefix, root) = if let Some(prefix) = self.literal_path_prefix() {
+        let (prefix, root) = if let Some(prefix) = token::literal_path_prefix(self.tokens.iter()) {
             let root: Cow<'_, Path> = directory.as_ref().join(&prefix).into();
             if prefix.is_absolute() {
                 // Note that absolute paths replace paths with which they are
@@ -505,29 +505,6 @@ impl<'t> Glob<'t> {
                 .min_depth(1)
                 .max_depth(depth)
                 .into_iter(),
-        }
-    }
-
-    fn literal_path_prefix(&self) -> Option<PathBuf> {
-        let mut prefix = String::new();
-        if let Some(Token::Separator) = self.tokens.first() {
-            // Include any rooting separator at the beginning of the glob.
-            prefix.push(MAIN_SEPARATOR);
-        }
-        // TODO: Replace `map`, `take_while`, and `flatten` with `map_while`
-        //       when it stabilizes.
-        prefix.push_str(
-            &token::components(self.tokens.iter())
-                .map(|component| component.literal())
-                .take_while(|literal| literal.is_some())
-                .flatten()
-                .join(&MAIN_SEPARATOR.to_string()),
-        );
-        if prefix.is_empty() {
-            None
-        }
-        else {
-            Some(prefix.into())
         }
     }
 }
@@ -566,24 +543,26 @@ impl<'g, 't> Read<'g, 't> {
         let mut tokens = tokens.into_iter().peekable();
         while let Some(token) = tokens.peek().map(|token| token.borrow()) {
             match token {
-                Token::Alternative(ref alternative) if alternative.has_subtree_tokens() => {
-                    break; // Stop at alternative tokens with sub-trees.
+                Token::Alternative(ref alternative) if alternative.has_component_boundary() => {
+                    // Stop at alternative tokens with component boundaries.
+                    break;
                 }
                 Token::Separator => {
+                    // Skip separators.
                     tokens.next();
-                    continue; // Skip separators.
+                    continue;
                 }
                 Token::Wildcard(Wildcard::Tree) => {
-                    break; // Stop at tree tokens.
+                    // Stop at tree tokens.
+                    break;
                 }
                 _ => {
                     regexes.push(Glob::compile(tokens.take_while_ref(
                         |token| match token.borrow() {
                             Token::Alternative(ref alternative) => {
-                                !alternative.has_subtree_tokens()
+                                !alternative.has_component_boundary()
                             }
-                            Token::Separator | Token::Wildcard(Wildcard::Tree) => false,
-                            _ => true,
+                            token => !token.is_component_boundary(),
                         },
                     )));
                 }
@@ -842,39 +821,6 @@ mod tests {
         assert!(Glob::new("{**/okay,error/**}postfix").is_err());
         assert!(Glob::new("{**/okay,prefix{error/**}}postfix").is_err());
         assert!(Glob::new("{**/okay,prefix{**/error}}postfix").is_err());
-    }
-
-    #[test]
-    fn literal_path_prefix() {
-        assert_eq!(
-            Glob::new("/a/b").unwrap().literal_path_prefix(),
-            Some(Path::new("/a/b").to_path_buf()),
-        );
-        assert_eq!(
-            Glob::new("a/b").unwrap().literal_path_prefix(),
-            Some(Path::new("a/b").to_path_buf()),
-        );
-        assert_eq!(
-            Glob::new("a/*").unwrap().literal_path_prefix(),
-            Some(Path::new("a/").to_path_buf()),
-        );
-        assert_eq!(
-            Glob::new("a/*b").unwrap().literal_path_prefix(),
-            Some(Path::new("a/").to_path_buf()),
-        );
-        assert_eq!(
-            Glob::new("a/b*").unwrap().literal_path_prefix(),
-            Some(Path::new("a/").to_path_buf()),
-        );
-        assert_eq!(
-            Glob::new("a/b/*/c").unwrap().literal_path_prefix(),
-            Some(Path::new("a/b/").to_path_buf()),
-        );
-
-        assert!(Glob::new("**").unwrap().literal_path_prefix().is_none());
-        assert!(Glob::new("a*").unwrap().literal_path_prefix().is_none());
-        assert!(Glob::new("*/b").unwrap().literal_path_prefix().is_none());
-        assert!(Glob::new("a?/b").unwrap().literal_path_prefix().is_none());
     }
 
     #[test]

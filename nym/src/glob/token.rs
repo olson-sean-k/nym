@@ -1,6 +1,7 @@
 use itertools::Itertools as _;
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
+use std::path::{PathBuf, MAIN_SEPARATOR};
 
 use crate::glob::GlobError;
 
@@ -21,12 +22,11 @@ impl<'t> Alternative<'t> {
         &self.0
     }
 
-    pub fn has_subtree_tokens(&self) -> bool {
+    pub fn has_component_boundary(&self) -> bool {
         self.0.iter().any(|tokens| {
             tokens.iter().any(|token| match token {
-                Token::Alternative(ref alternative) => alternative.has_subtree_tokens(),
-                Token::Separator | Token::Wildcard(Wildcard::Tree) => true,
-                _ => false,
+                Token::Alternative(ref alternative) => alternative.has_component_boundary(),
+                _ => token.is_component_boundary(),
             })
         })
     }
@@ -96,6 +96,10 @@ impl<'t> Token<'t> {
             Token::Separator => Token::Separator,
             Token::Wildcard(wildcard) => Token::Wildcard(wildcard),
         }
+    }
+
+    pub fn is_component_boundary(&self) -> bool {
+        matches!(self, Token::Separator | Token::Wildcard(Wildcard::Tree))
     }
 }
 
@@ -175,13 +179,39 @@ where
             _ => Component(
                 Some(first)
                     .into_iter()
-                    .chain(tokens.take_while_ref(|token| {
-                        !matches!(token, Token::Separator | Token::Wildcard(Wildcard::Tree))
-                    }))
+                    .chain(tokens.take_while_ref(|token| !token.is_component_boundary()))
                     .collect(),
             ),
         })
     })
+}
+
+pub fn literal_path_prefix<'t, I>(tokens: I) -> Option<PathBuf>
+where
+    I: IntoIterator<Item = &'t Token<'t>>,
+    I::IntoIter: Clone,
+{
+    let mut tokens = tokens.into_iter().peekable();
+    let mut prefix = String::new();
+    if let Some(Token::Separator) = tokens.peek() {
+        // Include any rooting separator at the beginning of the token sequence.
+        prefix.push(MAIN_SEPARATOR);
+    }
+    // TODO: Replace `map`, `take_while`, and `flatten` with `map_while`
+    //       when it stabilizes.
+    prefix.push_str(
+        &components(tokens)
+            .map(|component| component.literal())
+            .take_while(|literal| literal.is_some())
+            .flatten()
+            .join(&MAIN_SEPARATOR.to_string()),
+    );
+    if prefix.is_empty() {
+        None
+    }
+    else {
+        Some(prefix.into())
+    }
 }
 
 // TODO: Patterns like `/**` do not parse correctly. The initial separator is
@@ -413,4 +443,44 @@ pub fn optimize<'t>(
             }
             _ => Err((left, right)),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use crate::glob::token;
+
+    #[test]
+    fn literal_path_prefix() {
+        assert_eq!(
+            token::literal_path_prefix(token::parse("/a/b").unwrap().iter()),
+            Some(Path::new("/a/b").to_path_buf()),
+        );
+        assert_eq!(
+            token::literal_path_prefix(token::parse("a/b").unwrap().iter()),
+            Some(Path::new("a/b").to_path_buf()),
+        );
+        assert_eq!(
+            token::literal_path_prefix(token::parse("a/*").unwrap().iter()),
+            Some(Path::new("a/").to_path_buf()),
+        );
+        assert_eq!(
+            token::literal_path_prefix(token::parse("a/*b").unwrap().iter()),
+            Some(Path::new("a/").to_path_buf()),
+        );
+        assert_eq!(
+            token::literal_path_prefix(token::parse("a/b*").unwrap().iter()),
+            Some(Path::new("a/").to_path_buf()),
+        );
+        assert_eq!(
+            token::literal_path_prefix(token::parse("a/b/*/c").unwrap().iter()),
+            Some(Path::new("a/b/").to_path_buf()),
+        );
+
+        assert!(token::literal_path_prefix(token::parse("**").unwrap().iter()).is_none());
+        assert!(token::literal_path_prefix(token::parse("a*").unwrap().iter()).is_none());
+        assert!(token::literal_path_prefix(token::parse("*/b").unwrap().iter()).is_none());
+        assert!(token::literal_path_prefix(token::parse("a?/b").unwrap().iter()).is_none());
+    }
 }
