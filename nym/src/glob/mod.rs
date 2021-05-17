@@ -17,7 +17,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
 
-use crate::glob::token::{Token, Wildcard};
+use crate::glob::token::Token;
 
 pub use crate::glob::capture::Captures;
 pub use crate::glob::rule::RuleError;
@@ -533,39 +533,23 @@ struct Read<'g, 't> {
 }
 
 impl<'g, 't> Read<'g, 't> {
-    fn compile<I, T>(tokens: I) -> Vec<Regex>
+    fn compile<I>(tokens: I) -> Vec<Regex>
     where
-        I: IntoIterator<Item = T>,
+        I: IntoIterator<Item = &'t Token<'t>>,
         I::IntoIter: Clone,
-        T: Borrow<Token<'t>> + Clone,
     {
         let mut regexes = Vec::new();
-        let mut tokens = tokens.into_iter().peekable();
-        while let Some(token) = tokens.peek().map(|token| token.borrow()) {
-            match token {
-                Token::Alternative(ref alternative) if alternative.has_component_boundary() => {
-                    // Stop at alternative tokens with component boundaries.
-                    break;
-                }
-                Token::Separator => {
-                    // Skip separators.
-                    tokens.next();
-                    continue;
-                }
-                Token::Wildcard(Wildcard::Tree) => {
-                    // Stop at tree tokens.
-                    break;
-                }
-                _ => {
-                    regexes.push(Glob::compile(tokens.take_while_ref(
-                        |token| match token.borrow() {
-                            Token::Alternative(ref alternative) => {
-                                !alternative.has_component_boundary()
-                            }
-                            token => !token.is_component_boundary(),
-                        },
-                    )));
-                }
+        for component in token::components(tokens) {
+            if component.tokens().iter().any(|token| match token {
+                Token::Alternative(ref alternative) => alternative.has_component_boundary(),
+                token => token.is_component_boundary(),
+            }) {
+                // Stop at component boundaries, such as tree wildcards or any
+                // boundary within an alternative token.
+                break;
+            }
+            else {
+                regexes.push(Glob::compile(component.tokens().iter().cloned()));
             }
         }
         regexes
