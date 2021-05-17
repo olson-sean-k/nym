@@ -25,7 +25,7 @@ impl<'t> Alternative<'t> {
         self.0.iter().any(|tokens| {
             tokens.iter().any(|token| match token {
                 Token::Alternative(ref alternative) => alternative.has_subtree_tokens(),
-                Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree) => true,
+                Token::Separator | Token::Wildcard(Wildcard::Tree) => true,
                 _ => false,
             })
         })
@@ -77,7 +77,7 @@ pub enum Token<'t> {
         archetypes: Vec<Archetype>,
     },
     Literal(Cow<'t, str>),
-    NonTreeSeparator,
+    Separator,
     Wildcard(Wildcard),
 }
 
@@ -93,7 +93,7 @@ impl<'t> Token<'t> {
                 archetypes,
             },
             Token::Literal(literal) => literal.into_owned().into(),
-            Token::NonTreeSeparator => Token::NonTreeSeparator,
+            Token::Separator => Token::Separator,
             Token::Wildcard(wildcard) => Token::Wildcard(wildcard),
         }
     }
@@ -167,7 +167,7 @@ where
 {
     tokens.into_iter().batching(|tokens| {
         let mut first = tokens.next();
-        while matches!(first, Some(Token::NonTreeSeparator)) {
+        while matches!(first, Some(Token::Separator)) {
             first = tokens.next();
         }
         first.map(|first| match first {
@@ -176,10 +176,7 @@ where
                 Some(first)
                     .into_iter()
                     .chain(tokens.take_while_ref(|token| {
-                        !matches!(
-                            token,
-                            Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree)
-                        )
+                        !matches!(token, Token::Separator | Token::Wildcard(Wildcard::Tree))
                     }))
                     .collect(),
             ),
@@ -246,7 +243,7 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
     where
         E: ParseError<&'i str>,
     {
-        combinator::value(Token::NonTreeSeparator, bytes::tag("/"))(input)
+        combinator::value(Token::Separator, bytes::tag("/"))(input)
     }
 
     fn wildcard<'i, E>(input: &'i str) -> IResult<&'i str, Token, E>

@@ -348,9 +348,7 @@ impl<'t> Glob<'t> {
 
             use crate::glob::token::Archetype::{Character, Range};
             use crate::glob::token::Evaluation::{Eager, Lazy};
-            use crate::glob::token::Token::{
-                Alternative, Class, Literal, NonTreeSeparator, Wildcard,
-            };
+            use crate::glob::token::Token::{Alternative, Class, Literal, Separator, Wildcard};
             use crate::glob::token::Wildcard::{One, Tree, ZeroOrMore};
 
             for token in tokens.into_iter().with_position() {
@@ -360,7 +358,7 @@ impl<'t> Glob<'t> {
                             pattern.push_str(&escape(byte));
                         }
                     }
-                    (_, NonTreeSeparator) => pattern.push_str(&escape(b'/')),
+                    (_, Separator) => pattern.push_str(&escape(b'/')),
                     (_, Alternative(alternative)) => {
                         let encodings: Vec<_> = alternative
                             .branches()
@@ -512,7 +510,7 @@ impl<'t> Glob<'t> {
 
     fn literal_path_prefix(&self) -> Option<PathBuf> {
         let mut prefix = String::new();
-        if let Some(Token::NonTreeSeparator) = self.tokens.first() {
+        if let Some(Token::Separator) = self.tokens.first() {
             // Include any rooting separator at the beginning of the glob.
             prefix.push(MAIN_SEPARATOR);
         }
@@ -571,7 +569,7 @@ impl<'g, 't> Read<'g, 't> {
                 Token::Alternative(ref alternative) if alternative.has_subtree_tokens() => {
                     break; // Stop at alternative tokens with sub-trees.
                 }
-                Token::NonTreeSeparator => {
+                Token::Separator => {
                     tokens.next();
                     continue; // Skip separators.
                 }
@@ -584,7 +582,7 @@ impl<'g, 't> Read<'g, 't> {
                             Token::Alternative(ref alternative) => {
                                 !alternative.has_subtree_tokens()
                             }
-                            Token::NonTreeSeparator | Token::Wildcard(Wildcard::Tree) => false,
+                            Token::Separator | Token::Wildcard(Wildcard::Tree) => false,
                             _ => true,
                         },
                     )));
