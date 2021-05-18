@@ -246,7 +246,7 @@ impl<'b> BytePath<'b> {
     }
 
     pub fn path(&self) -> Option<Cow<Path>> {
-        Path::from_bytes(self.path.as_ref()).ok()
+        Path::from_raw_bytes(self.path.as_ref()).ok()
     }
 }
 
