@@ -162,6 +162,7 @@ fn substitute<'t>(
         let mut text = text.into_owned();
         for formatter in formatters {
             text = match *formatter {
+                TextFormatter::Coalesce { ref from, to } => text::coalesce(&text, from, to),
                 TextFormatter::Pad {
                     shim,
                     alignment,

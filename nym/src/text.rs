@@ -8,6 +8,19 @@ pub enum Alignment {
     Center,
 }
 
+pub fn coalesce(text: &str, from: &[char], to: char) -> String {
+    text.chars()
+        .map(|character| {
+            if from.contains(&character) {
+                to
+            }
+            else {
+                character
+            }
+        })
+        .collect()
+}
+
 pub fn pad(text: &str, shim: char, alignment: Alignment, width: usize) -> Cow<str> {
     let n = UnicodeWidthStr::width(text);
     if n >= width {
@@ -35,6 +48,30 @@ pub fn pad(text: &str, shim: char, alignment: Alignment, width: usize) -> Cow<st
 #[cfg(test)]
 mod tests {
     use crate::text::{self, Alignment};
+
+    #[test]
+    fn coalesce_identity() {
+        assert_eq!(
+            text::coalesce("the quick brown fox", &[' '], ' '),
+            "the quick brown fox"
+        );
+    }
+
+    #[test]
+    fn coalesce_one_to_one() {
+        assert_eq!(
+            text::coalesce("the quick brown fox", &[' '], '-'),
+            "the-quick-brown-fox"
+        );
+    }
+
+    #[test]
+    fn coalesce_many_to_one() {
+        assert_eq!(
+            text::coalesce("the_quick-brown\tfox", &['_', '-', '\t'], ' '),
+            "the quick brown fox"
+        );
+    }
 
     #[test]
     fn pad_left() {

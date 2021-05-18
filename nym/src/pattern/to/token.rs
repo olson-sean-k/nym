@@ -1,4 +1,5 @@
 use chrono::{DateTime, TimeZone};
+use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::fmt::Display;
 use std::num::ParseIntError;
@@ -140,6 +141,10 @@ impl<'t> From<Property<'t>> for Subject<'t> {
 
 #[derive(Clone, Debug)]
 pub enum TextFormatter {
+    Coalesce {
+        from: SmallVec<[char; 4]>,
+        to: char,
+    },
     Pad {
         shim: char,
         alignment: Alignment,
@@ -418,6 +423,26 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
             multi::separated_list0(
                 bytes::tag(","),
                 branch::alt((
+                    combinator::map(
+                        sequence::preceded(
+                            bytes::tag("%"),
+                            sequence::tuple((
+                                argument,
+                                bracketed(branch::alt((
+                                    character::none_of("[]\\"),
+                                    branch::alt((
+                                        combinator::value('[', bytes::tag("\\[")),
+                                        combinator::value(']', bytes::tag("\\]")),
+                                        combinator::value('\\', bytes::tag("\\\\")),
+                                    )),
+                                ))),
+                            )),
+                        ),
+                        |(from, to)| TextFormatter::Coalesce {
+                            from: from.chars().collect(),
+                            to,
+                        },
+                    ),
                     combinator::map(
                         sequence::tuple((
                             branch::alt((
