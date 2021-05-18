@@ -443,6 +443,33 @@ impl<'t> Glob<'t> {
         Ok(Glob { tokens, regex })
     }
 
+    pub fn partitioned(text: &'t str) -> Result<(PathBuf, Self), GlobError> {
+        pub fn literal_prefix_upper_bound(tokens: &[Token]) -> usize {
+            let mut index = 0;
+            for (n, token) in tokens.iter().enumerate() {
+                match token {
+                    Token::Separator => {
+                        index = n;
+                    }
+                    Token::Literal(_) => {
+                        continue;
+                    }
+                    _ => {
+                        return if index == 0 { index } else { index + 1 };
+                    }
+                }
+            }
+            tokens.len()
+        }
+
+        let mut tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
+        rule::check(tokens.iter())?;
+        let prefix = token::literal_path_prefix(tokens.iter()).unwrap_or_else(PathBuf::new);
+        tokens.drain(0..literal_prefix_upper_bound(&tokens));
+        let regex = Glob::compile(tokens.iter());
+        Ok((prefix, Glob { tokens, regex }))
+    }
+
     pub fn into_owned(self) -> Glob<'static> {
         let Glob { tokens, regex } = self;
         let tokens = tokens.into_iter().map(|token| token.into_owned()).collect();
@@ -924,5 +951,35 @@ mod tests {
         assert!(glob.is_match(Path::new("a/foo/bar/baz/qux")));
 
         assert!(!glob.is_match(Path::new("a/foo/bar/qux")));
+    }
+
+    #[test]
+    fn partition_glob_with_literal_and_non_literal_parts() {
+        let (prefix, glob) = Glob::partitioned("a/b/x?z/*.ext").unwrap();
+
+        assert_eq!(prefix, Path::new("a/b"));
+
+        assert!(glob.is_match(Path::new("xyz/file.ext")));
+        assert!(glob.is_match(Path::new("a/b/xyz/file.ext").strip_prefix(prefix).unwrap()));
+    }
+
+    #[test]
+    fn partition_glob_with_only_non_literal_parts() {
+        let (prefix, glob) = Glob::partitioned("x?z/*.ext").unwrap();
+
+        assert_eq!(prefix, Path::new(""));
+
+        assert!(glob.is_match(Path::new("xyz/file.ext")));
+        assert!(glob.is_match(Path::new("xyz/file.ext").strip_prefix(prefix).unwrap()));
+    }
+
+    #[test]
+    fn partition_glob_with_only_literal_parts() {
+        let (prefix, glob) = Glob::partitioned("a/b").unwrap();
+
+        assert_eq!(prefix, Path::new("a/b"));
+
+        assert!(glob.is_match(Path::new("")));
+        assert!(glob.is_match(Path::new("a/b").strip_prefix(prefix).unwrap()));
     }
 }
