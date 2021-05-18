@@ -18,6 +18,10 @@ to-pattern to resolve destination paths. Transforms include the `append`,
 `copy`, `link` and `move` commands. Some commands, such as `find`, use only a
 from-pattern.
 
+Commands that write to the file system (i.e., transforms like `copy`) are
+interactive by default and print a manifest and then prompt to continue before
+writing. This behavior can be controlled with the `--interactive` option.
+
 Nym operates exclusively on files (with the exception of the `--parent`/`-p`
 flag, which creates parent directories in destination paths derived from
 to-patterns). Commands never apply to directories. It is **not** possible to
@@ -32,8 +36,8 @@ nym copy '**' '{#0}.bak'
 
 Here, `copy` is the sub-command (also known as an actuator), `**` is the
 from-pattern, and `{#0}.bak` is the to-pattern. Note that in most shells
-patterns must be escaped to avoid interacting with features like expansion.
-Quoting patterns usually prevents these unwanted interactions.
+patterns must be escaped to avoid interacting with shell features like
+expansion. Quoting patterns usually prevents these unwanted interactions.
 
 The following command finds all files beneath a `src` directory with either the
 `.go` or `.rs` extension.
@@ -109,7 +113,7 @@ escaped via a backslash, such as `[a\-]` to match `a` or `-`.
 Alternatives match an arbitrary sequence of comma separated sub-globs delimited
 by curly braces `{...,...}`. For example, `{a?c,x?z,foo}` matches any of the
 sub-globs `a?c`, `x?z`, or `foo` in order. Alternatives may be arbitrarily
-nested, such as in `a{b*,c{d*,e*},f}`.
+nested, such as in `a{b,c{d,e{f,g}}}`.
 
 Alternatives form a single capture group regardless of the contents of their
 sub-globs. This capture is formed from the complete match of the sub-glob, so if
@@ -139,7 +143,7 @@ which from-patterns are applied using native paths. For example, the following
 command copies all files from the UNC share path `\\server\share\src`.
 
 ```shell
-nym copy --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
+nym copy -p --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
 ```
 
 Globs do not explicitly support the notion of a parent directory. However, any
@@ -153,11 +157,11 @@ nym find '../src/*.rs'
 ```
 
 However, `..` is interpreted as a literal and when it follows variant
-(non-literal) components in a glob it is not re-interpreted as a native path by
-the platform.  In this case, `..` only matches paths with the literal component
-`..`. This never occurs when traversing directory trees, so **`..` literals
-following variant patterns like wildcards match nothing and should not be
-used**. For example, the from-pattern `src/**/../*.rs` matches nothing.
+(non-literal) components in a glob it only matches paths with the literal
+component `..`. This never occurs when traversing directory trees, **so `..`
+literals following variant patterns like wildcards match nothing and should not
+be used**. For example, the from-pattern `src/**/../*.rs` never yields any
+matching files.
 
 ## To-Patterns
 
@@ -228,12 +232,13 @@ The pad formatter pads substitution text to a specified width and alignment
 using the given character shim. For example, `{#1|>4[0]}` pads the substitution
 text into four columns using right alignment and the character `0` for padding.
 If the original substitution text is `13`, then it becomes `0013` after
-formatting in this example.
+formatting in this example. Left and center alignment are also supported via `<`
+and `^`, respectively.
 
 There are three casing formatters: lowercase, uppercase, and titlecase, with the
 case-insensitive patterns `lower`, `upper`, and `title`, respectively. These
 formatters take no parameters and change the casing of supported characters.
-Note that `title` is sensitive to delimiters and only breaks words across
+Note that `title` is sensitive to word breaks, which only occur across
 whitespace and hyphens `-` (and **not** underscores `_`, for example).
 
 The coalesce formatter replaces matching input characters with an output
@@ -248,8 +253,8 @@ formats that part using title casing with spaces.
 nym move '$_$_*.mp4' '{#2|%[-][ ],title}.mp4'
 ```
 
-Given a file named `the-show-title_the-episode-title_h264-dual.mp4`, the above
-transform would move it to `The Episode Title.mp4`.
+Given a file named `the-show-title_the-episode-title_the-encoding.mp4`, the
+above transform would move it to `The Episode Title.mp4`.
 
 ## Crates
 
@@ -281,7 +286,8 @@ cargo install --locked --path=. --force
 
 By default, this will build the `master` branch, which generally tracks tested
 upcoming changes. To install a specific release, checkout a version tag before
-using `cargo install`.
+using `cargo install`. Note that the build instructions may differ between
+versions; refer to the `README` in the clone.
 
 ```shell
 git checkout v0.0.0
@@ -289,11 +295,17 @@ git checkout v0.0.0
 
 ### Registry
 
-To install a specific release of `nym` from the [crates.io] Rust package
-registry, [install Rust][rustup] and then build and install `nym` using `cargo`.
+To install a release of `nym` from the [crates.io] Rust package registry,
+[install Rust][rustup] and then build and install `nym` using `cargo`.
 
 ```shell
 cargo install nym-cli --locked --force
+```
+
+To install a specific release, use the `--version` option.
+
+```shell
+cargo install nym-cli --version=0.0.0 --locked --force
 ```
 
 ### Package
