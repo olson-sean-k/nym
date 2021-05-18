@@ -49,18 +49,11 @@ resemble literal paths, but additionally support wildcards, character classes,
 and alternatives that can be matched against paths on the file system. Matches
 provide capture text that can be used in to-patterns.
 
-Forward slash `/` is **always** the path separator in globs and back slashes `\`
-are forbidden (back slash is used for escape sequences, but the literal sequence
-`\\` is not supported). Separators are normalized across platforms; glob
-patterns can match paths on Windows, for example.
-
-On Windows, UNC paths or paths with other prefixes can be used via the
-`--tree`/`-C` option. For example, the following command copies all files from
-the UNC share path `\\server\share\src`.
-
-```shell
-nym copy --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
-```
+Globs are opinionated about path separators. Forward slash `/` is **always** the
+path separator and back slashes `\` are forbidden (back slash is used for escape
+sequences, but the literal sequence `\\` is not supported). Separators are
+normalized across platforms; glob patterns can match paths on Windows, for
+example.
 
 ### Wildcards
 
@@ -73,9 +66,9 @@ match across directory boundaries. When a tree wildcard participates in a match
 and does not terminate the pattern, its capture includes a trailing path
 separator. If a tree wildcard does not participate in a match, its capture is an
 empty string with no path separator. Tree wildcards must be delimited by path
-separators or nothing (such as the beginning and/or end of a glob or sub-glob).
-If a glob consists solely of a tree wildcard, then it matches all files in the
-working directory tree.
+separators or a termination (such as the beginning and/or end of a glob or
+sub-glob). If a glob consists solely of a tree wildcard, then it matches all
+files in the working directory tree.
 
 The zero-or-more wildcards `*` and `$` match zero or more of any character
 **except path separators**. Zero-or-more wildcards cannot be adjacent to other
@@ -93,7 +86,7 @@ wildcards such as `???` form distinct captures for each `?` wildcard.
 Character classes match any single character from a group of literals and ranges
 **except path separators**. Classes are delimited by square brackets `[...]`.
 Individual character literals are specified as is, such as `[ab]` to match
-either `a` or `b`. Character ranges are formed from two characters seperated by
+either `a` or `b`. Character ranges are formed from two characters separated by
 a hyphen, such as `[x-z]` to match `x`, `y`, or `z`.
 
 Any number of character literals and ranges can be used within a single
@@ -114,12 +107,14 @@ escaped via a backslash, such as `[a\-]` to match `a` or `-`.
 Alternatives match an arbitrary sequence of comma separated sub-globs delimited
 by curly braces `{...,...}`. For example, `{a?c,x?z,foo}` matches any of the
 sub-globs `a?c`, `x?z`, or `foo` in order. Alternatives may be arbitrarily
-nested, such as in `a{b*,c{x?z,foo},d}`.
+nested, such as in `a{b*,c{d*,e*},f}`.
 
 Alternatives form a single capture group regardless of the contents of their
 sub-globs. This capture is formed from the complete match of the sub-glob, so if
-the sub-glob `a?c` matches `abc` in the above example, then the capture text
-will be `abc` (**not** `b` as it would be outside of an alternative sequence).
+the sub-glob `a?c` matches `abc` in `{a?c,x?z}`, then the capture text will be
+`abc` (**not** `b` as it would be outside of an alternative sequence).
+Alternatives can be used to group capture text using a single sub-glob, such as
+`{*.{go,rs}}` to capture an entire file name with a particular extension.
 
 Sub-globs, in particular those containing wildcards, must consider neighboring
 patterns. For example, it is not possible to introduce a tree wildcard that is
@@ -128,18 +123,51 @@ is allowed but `foo{bar,**/baz}` is not. Because it matches anything, singular
 tree wildcards are **never** allowed in sub-globs, so `foo/{bar,**}` is
 disallowed.
 
+### Literals and Platform-specific Features
+
+Any components not recognized by globs are interpreted as literals. In
+combination with strict interpretations of path separators, this means some
+platform-specific features cannot be used as part of a from-pattern.
+
+In particular, while from-patterns can be rooted, they cannot include schemes
+nor Windows path prefixes. On Windows, UNC paths or paths with other prefixes
+can be used via the `--tree`/`-C` option, which establishes the directory in
+which from-patterns are applied using native paths. For example, the following
+command copies all files from the UNC share path `\\server\share\src`.
+
+```shell
+nym copy --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
+```
+
+Globs do not explicitly support the notion of a parent directory. However, any
+invariant (literal) prefix is re-interpreted by the platform as a native path,
+so from-patterns that begin with `..` behave as expected on Unix and Windows.
+For example, the following command intuitively operates in the parent of the
+current working directory on Windows and Unix platforms.
+
+```shell
+nym find '../src/*.rs'
+```
+
+However, `..` is interpreted as a literal and when it follows variant
+(non-literal) components in a glob it is not re-interpreted by the platform and
+only matches paths with the literal component `..`. This never occurs when
+traversing directory trees, so **`..` literals following variant patterns like
+wildcards match nothing and should not be used**. For example, the from-pattern
+`src/**/../*.rs` matches nothing.
+
 ## To-Patterns
 
 To-patterns resolve destination paths. These patterns consist of literals and
 substitutions. A substitution is either a capture from a corresponding
 from-pattern or a property that reads file metadata. Substitutions are delimited
-by curly braces `{...}`.
+by curly braces `{...}`. Literals form a native path as-is.
 
 ### Captures
 
 Captures index a from-pattern using a hash followed by the index, like `{#1}`.
 These indices count from one; the zero index is used for the full text of a
-match. Empty braces also respresent the full text of a match, so `{#0}` and `{}`
+match. Empty braces also represent the full text of a match, so `{#0}` and `{}`
 are equivalent.
 
 Captures may include a condition. Conditions specify substitution text based on
@@ -190,11 +218,11 @@ Any number of text formatters may be used separated by commas `,` and they are
 applied from left to right in the order in which they appear.
 
 Text formatters are distinct from property formats and, as their name suggests,
-operate exlusively on the output text of a substitution (they do not operate on
+operate exclusively on the output text of a substitution (they do not operate on
 non-textual data).
 
 The pad formatter pads substitution text to a specified width and alignment
-using the given character shim. For example, `{#1|>4[0]}` pads the substition
+using the given character shim. For example, `{#1|>4[0]}` pads the substitution
 text into four columns using right alignment and the character `0` for padding.
 If the original substitution text is `13`, then it becomes `0013` after
 formatting in this example.
@@ -227,10 +255,18 @@ cd nym/nym-cli
 cargo install --locked --path=. --force
 ```
 
+By default, this will build the `master` branch, which generally tracks tested
+upcoming changes. To install a specific release, checkout a version tag before
+using `cargo install`.
+
+```shell
+git checkout v0.0.0
+```
+
 ### Registry
 
-To install `nym` from the [crates.io] Rust package registry, [install
-Rust][rustup] and then build and install `nym` using `cargo`.
+To install a specific release of `nym` from the [crates.io] Rust package
+registry, [install Rust][rustup] and then build and install `nym` using `cargo`.
 
 ```shell
 cargo install nym-cli --locked --force
