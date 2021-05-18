@@ -319,7 +319,7 @@ impl<'t> Glob<'t> {
             {
                 match self {
                     Grouping::Capture => pattern.push('('),
-                    Grouping::NonCapture => pattern.push_str("(:?"),
+                    Grouping::NonCapture => pattern.push_str("(?:"),
                 }
                 pattern.push_str(f().as_ref());
                 pattern.push(')');
