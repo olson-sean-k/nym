@@ -1,3 +1,4 @@
+use itertools::Itertools as _;
 use thiserror::Error;
 
 use crate::glob::token::{self, Component, Token};
@@ -10,6 +11,8 @@ pub enum RuleError {
     AlternativeTree,
     #[error("invalid zero-or-more wildcard `*` or `$` in alternative")]
     AlternativeZeroOrMore,
+    #[error("invalid separator `/`")]
+    SeparatorAdjacent,
 }
 
 pub fn check<'t, I>(tokens: I) -> Result<(), RuleError>
@@ -18,7 +21,8 @@ where
     I::IntoIter: Clone,
 {
     let tokens = tokens.into_iter();
-    alternative(tokens)?;
+    alternative(tokens.clone())?;
+    separator(tokens)?;
     Ok(())
 }
 
@@ -122,4 +126,21 @@ where
     }
 
     recurse(token::components(tokens), (None, None))
+}
+
+fn separator<'t, I>(tokens: I) -> Result<(), RuleError>
+where
+    I: IntoIterator<Item = &'t Token<'t>>,
+    I::IntoIter: Clone,
+{
+    if tokens
+        .into_iter()
+        .tuple_windows::<(_, _)>()
+        .any(|adjacent| matches!(adjacent, (Token::Separator, Token::Separator)))
+    {
+        Err(RuleError::SeparatorAdjacent)
+    }
+    else {
+        Ok(())
+    }
 }

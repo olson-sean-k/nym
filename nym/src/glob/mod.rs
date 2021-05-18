@@ -444,8 +444,6 @@ impl<'t> Glob<'t> {
     }
 
     pub fn into_owned(self) -> Glob<'static> {
-        // Taking ownership of token data does not modify the regular
-        // expression.
         let Glob { tokens, regex } = self;
         let tokens = tokens.into_iter().map(|token| token.into_owned()).collect();
         Glob { tokens, regex }
@@ -805,6 +803,13 @@ mod tests {
         assert!(Glob::new("{**/okay,error/**}postfix").is_err());
         assert!(Glob::new("{**/okay,prefix{error/**}}postfix").is_err());
         assert!(Glob::new("{**/okay,prefix{**/error}}postfix").is_err());
+    }
+
+    #[test]
+    fn reject_glob_with_invalid_separator_tokens() {
+        assert!(Glob::new("//a").is_err());
+        assert!(Glob::new("a//b").is_err());
+        assert!(Glob::new("a/b//").is_err());
     }
 
     #[test]
