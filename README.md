@@ -143,18 +143,18 @@ Globs do not explicitly support the notion of a parent directory. However, any
 invariant (literal) prefix is re-interpreted by the platform as a native path,
 so from-patterns that begin with `..` behave as expected on Unix and Windows.
 For example, the following command intuitively operates in the parent of the
-current working directory on Windows and Unix platforms.
+current working directory.
 
 ```shell
 nym find '../src/*.rs'
 ```
 
 However, `..` is interpreted as a literal and when it follows variant
-(non-literal) components in a glob it is not re-interpreted by the platform and
-only matches paths with the literal component `..`. This never occurs when
-traversing directory trees, so **`..` literals following variant patterns like
-wildcards match nothing and should not be used**. For example, the from-pattern
-`src/**/../*.rs` matches nothing.
+(non-literal) components in a glob it is not re-interpreted as a native path by
+the platform.  In this case, `..` only matches paths with the literal component
+`..`. This never occurs when traversing directory trees, so **`..` literals
+following variant patterns like wildcards match nothing and should not be
+used**. For example, the from-pattern `src/**/../*.rs` matches nothing.
 
 ## To-Patterns
 
@@ -226,6 +226,27 @@ using the given character shim. For example, `{#1|>4[0]}` pads the substitution
 text into four columns using right alignment and the character `0` for padding.
 If the original substitution text is `13`, then it becomes `0013` after
 formatting in this example.
+
+There are three casing formatters: lowercase, uppercase, and titlecase, with the
+case-insensitive patterns `lower`, `upper`, and `title`, respectively. These
+formatters take no parameters and change the casing of supported characters.
+Note that `title` is sensitive to delimiters and only breaks words across
+whitespace and hyphens `-` (and **not** underscores `_`, for example).
+
+The coalesce formatter replaces matching input characters with an output
+character. For example, `{#1|%[_-][~]}` replaces any instances of `_` or `-`
+with a tilde `~`.
+
+Text formatters can be combined to perform complex formatting. For example, the
+following command extracts a part of file names delimited by underscores `_` and
+formats that part using title casing with spaces.
+
+```shell
+nym move '$_$_*.mp4' '{#2|%[-][ ],title}.mp4'
+```
+
+Given a file named `the-show-title_the-episode-title_h264-dual.mp4`, the above
+transform would move it to `The Episode Title.mp4`.
 
 ## Crates
 
