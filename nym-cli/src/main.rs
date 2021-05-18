@@ -50,7 +50,10 @@ impl Program {
     pub fn run(&mut self) -> Result<(), Error> {
         terminal::toggle_color_output(self.command.common_option_group().color);
         match self.command {
-            Command::Append { .. } => todo!("append"),
+            Command::Append { .. } => todo!(
+                "append is not yet implemented and may never be; consider piping into `tar` or \
+                 other archiving tools"
+            ),
             Command::Copy {
                 ref mut options,
                 ref transform,
@@ -155,6 +158,11 @@ struct TransformOptionGroup {
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all = "kebab-case")]
 enum Command {
+    // TODO: This may not provide much utility and is the only many-to-one
+    //       transform. The order in which files are appended may be important
+    //       and the `find` command can be trivially used to do simple
+    //       archiving. Consider removing this feature and simplifying
+    //       manifests.
     /// Appends matched files.
     Append {
         #[structopt(flatten)]
