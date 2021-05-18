@@ -17,7 +17,7 @@ use std::str::FromStr;
 use thiserror::Error;
 use walkdir::{self, DirEntry, WalkDir};
 
-use crate::glob::token::Token;
+use crate::glob::token::{Token, Wildcard};
 
 pub use crate::glob::capture::Captures;
 pub use crate::glob::rule::RuleError;
@@ -453,6 +453,9 @@ impl<'t> Glob<'t> {
                     }
                     Token::Literal(_) => {
                         continue;
+                    }
+                    Token::Wildcard(Wildcard::Tree) => {
+                        return n;
                     }
                     _ => {
                         return if index == 0 { index } else { index + 1 };
@@ -981,5 +984,15 @@ mod tests {
 
         assert!(glob.is_match(Path::new("")));
         assert!(glob.is_match(Path::new("a/b").strip_prefix(prefix).unwrap()));
+    }
+
+    #[test]
+    fn partition_glob_with_literal_dots_and_tree_tokens() {
+        let (prefix, glob) = Glob::partitioned("../**/*.ext").unwrap();
+
+        assert_eq!(prefix, Path::new(".."));
+
+        assert!(glob.is_match(Path::new("xyz/file.ext")));
+        assert!(glob.is_match(Path::new("../xyz/file.ext").strip_prefix(prefix).unwrap()));
     }
 }

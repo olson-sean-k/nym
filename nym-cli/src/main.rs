@@ -61,7 +61,7 @@ impl Program {
                 ref from,
                 ..
             } => {
-                let from = FromPattern::from(Glob::new(from)?);
+                let from = FromPattern::from(Glob::partitioned(from)?);
                 let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
                 for entry in from.read(&options.directory, options.depth + 1).flatten() {
                     entry.path().print(&mut output)?;
@@ -235,7 +235,7 @@ struct UnparsedTransform {
 
 impl UnparsedTransform {
     fn parse(&self) -> Result<(FromPattern<'_>, ToPattern<'_>), Error> {
-        let from = Glob::new(&self.from)?.into();
+        let from = Glob::partitioned(&self.from)?.into();
         let to = ToPattern::new(&self.to)?;
         Ok((from, to))
     }
