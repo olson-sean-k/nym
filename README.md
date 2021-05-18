@@ -190,22 +190,22 @@ Properties include source file metadata in the destination path and are
 specified by name following an exclamation mark `!`. Property names are case
 insensitive. Supported properties are described in the following table.
 
-| Pattern     | Metadata               | Format    | Cargo Feature               |
-|-------------|------------------------|-----------|-----------------------------|
-| `{!b3sum}`  | [BLAKE3] hash digest   | digest    | `property-b3sum` (default)  |
-| `{!ctime}`  | creation timestamp     | date-time | n/a                         |
-| `{!md5sum}` | [MD5] hash digest      | digest    | `property-md5sum` (default) |
-| `{!mtime}`  | modification timestamp | date-time | n/a                         |
+| Pattern     | Metadata               | Type / Format | Cargo Feature               |
+|-------------|------------------------|---------------|-----------------------------|
+| `{!b3sum}`  | [BLAKE3] hash digest   | digest        | `property-b3sum` (default)  |
+| `{!ctime}`  | creation timestamp     | date-time     | n/a                         |
+| `{!md5sum}` | [MD5] hash digest      | digest        | `property-md5sum` (default) |
+| `{!mtime}`  | modification timestamp | date-time     | n/a                         |
 
 For example, `{!b3sum}` is replaced by the [BLAKE3] hash digest of the matched
 file.
 
 Properties are associated with a data type and corresponding format that
-transforms their output into the output text of a substitution. Formats are
-optionally specified after a property name following a colon `:` and delimited
-by square brackets `[...]`. For example, the pattern `{!mtime:[%Y]}` outputs the
-text of the four-digit year of a source file's modification timestamp. The
-date-time data type uses a [`strftime`]-like format.
+transforms them into the output text of a substitution. Formats are optionally
+specified after a property name following a colon `:` and delimited by square
+brackets `[...]`. For example, the date-time data type uses a [`strftime`]-like
+format and the pattern `{!mtime:[%Y]}` outputs the text of the four-digit year
+of a source file's modification timestamp.
 
 Properties may require additional dependencies and some can be toggled in a
 build using [Cargo features][features].
