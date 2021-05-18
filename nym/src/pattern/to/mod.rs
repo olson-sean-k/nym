@@ -168,6 +168,7 @@ fn substitute<'t>(
                     width,
                 } => text::pad(&text, shim, alignment, width).into_owned(),
                 TextFormatter::Lower => text.to_lowercase(),
+                TextFormatter::Title => titlecase::titlecase(&text),
                 TextFormatter::Upper => text.to_uppercase(),
             };
         }
@@ -200,8 +201,8 @@ mod tests {
     #[test]
     fn parse_to_pattern_formatter() {
         ToPattern::new("{#1|>4[0]}").unwrap();
-        ToPattern::new("{#1|u}").unwrap();
-        ToPattern::new("{#1|<2[ ],l}").unwrap();
+        ToPattern::new("{#1|upper}").unwrap();
+        ToPattern::new("{#1|<2[ ],lower}").unwrap();
     }
 
     #[test]
@@ -232,6 +233,6 @@ mod tests {
 
     #[test]
     fn reject_to_pattern_out_of_order() {
-        assert!(ToPattern::new("{#1|u?:}").is_err());
+        assert!(ToPattern::new("{#1|upper?:}").is_err());
     }
 }

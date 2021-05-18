@@ -35,6 +35,7 @@ os_str_bytes = "^2.4.0"
 regex = "^1.4.0"
 smallvec = "^1.5.0"
 thiserror = "^1.0.0"
+titlecase = "^1.1.0"
 unicode-width = "^0.1.0"
 walkdir = "^2.3.0"
 

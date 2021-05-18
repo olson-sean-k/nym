@@ -146,6 +146,7 @@ pub enum TextFormatter {
         width: usize,
     },
     Lower,
+    Title,
     Upper,
 }
 
@@ -442,8 +443,9 @@ pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
                             width,
                         },
                     ),
-                    combinator::value(TextFormatter::Lower, bytes::tag_no_case("l")),
-                    combinator::value(TextFormatter::Upper, bytes::tag_no_case("u")),
+                    combinator::value(TextFormatter::Lower, bytes::tag_no_case("lower")),
+                    combinator::value(TextFormatter::Title, bytes::tag_no_case("title")),
+                    combinator::value(TextFormatter::Upper, bytes::tag_no_case("upper")),
                 )),
             ),
         )(input)
