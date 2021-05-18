@@ -78,8 +78,10 @@ possible text. When followed by a literal, `*` stops at the last occurrence of
 that literal while `$` stops at the first occurence.
 
 The exactly-one wildcard `?` matches any single character **except path
-separators**. Exactly-one wildcards do not group, so a pattern of contiguous
-wildcards such as `???` form distinct captures for each `?` wildcard.
+separators**. Exactly-one wildcards do not group automatically, so a pattern of
+contiguous wildcards such as `???` form distinct captures for each `?` wildcard.
+An alternative can be used to group exactly-one wildcards into a single capture,
+such as `{???}` (see below).
 
 ### Character Classes
 
@@ -114,7 +116,8 @@ sub-globs. This capture is formed from the complete match of the sub-glob, so if
 the sub-glob `a?c` matches `abc` in `{a?c,x?z}`, then the capture text will be
 `abc` (**not** `b` as it would be outside of an alternative sequence).
 Alternatives can be used to group capture text using a single sub-glob, such as
-`{*.{go,rs}}` to capture an entire file name with a particular extension.
+`{*.{go,rs}}` to capture an entire file name with a particular extension or
+`{??}` to group a sequence of exactly-one wildcards.
 
 Sub-globs, in particular those containing wildcards, must consider neighboring
 patterns. For example, it is not possible to introduce a tree wildcard that is
