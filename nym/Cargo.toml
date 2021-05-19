@@ -2,7 +2,7 @@
 name = "nym"
 version = "0.0.0"
 authors = ["Sean Olson <olson.sean.k@gmail.com>"]
-description = "Append, copy, link, and move files using patterns."
+description = "Manipulate files en masse using patterns."
 repository = "https://github.com/olson-sean-k/nym"
 readme = "../README.md"
 edition = "2018"
