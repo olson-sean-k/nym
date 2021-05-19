@@ -10,12 +10,12 @@ jobs:
       fail-fast: false
       matrix:
         target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl]
-      steps:
-        - uses: actions/checkout@v2
-        - name: Build and Publish
-          uses: rust-build/rust-build.action@latest
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            RUSTTARGET: ${{ matrix.target }}
-            SRC_DIR: nym-cli
-            EXTRA_FILES: "LICENSE README.md"
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build and Publish
+        uses: rust-build/rust-build.action@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUSTTARGET: ${{ matrix.target }}
+          SRC_DIR: nym-cli
+          EXTRA_FILES: "LICENSE README.md"
