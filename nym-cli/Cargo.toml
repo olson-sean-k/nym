@@ -46,4 +46,5 @@ version = "^0.7.0"
 default-features = false
 
 [dependencies.nym]
+version = "^0.1.0"
 path = "../nym"
