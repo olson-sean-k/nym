@@ -379,7 +379,7 @@ checksum = "17b02fc0ff9a9e4b35b3342880f48e896ebf69f2967921fe8646bf5b7125956a"
 
 [[package]]
 name = "nym"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bimap",
  "blake3",
@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "nym-cli"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "console",
