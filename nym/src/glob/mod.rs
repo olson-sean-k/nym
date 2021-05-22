@@ -42,19 +42,19 @@ where
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Adjacency<T> {
-    Only(T),
-    First(T, T),
-    Middle(T, T, T),
-    Last(T, T),
+    Only { item: T },
+    First { item: T, right: T },
+    Middle { left: T, item: T, right: T },
+    Last { left: T, item: T },
 }
 
 impl<T> Adjacency<T> {
     pub fn into_tuple(self) -> (Option<T>, T, Option<T>) {
         match self {
-            Adjacency::Only(item) => (None, item, None),
-            Adjacency::First(item, right) => (None, item, Some(right)),
-            Adjacency::Middle(left, item, right) => (Some(left), item, Some(right)),
-            Adjacency::Last(left, item) => (Some(left), item, None),
+            Adjacency::Only { item } => (None, item, None),
+            Adjacency::First { item, right } => (None, item, Some(right)),
+            Adjacency::Middle { left, item, right } => (Some(left), item, Some(right)),
+            Adjacency::Last { left, item } => (Some(left), item, None),
         }
     }
 }
@@ -74,8 +74,8 @@ where
     fn new(input: I) -> Self {
         let mut input = input.fuse();
         let adjacency = match (input.next(), input.next()) {
-            (Some(first), Some(second)) => Some(Adjacency::First(first, second)),
-            (Some(first), None) => Some(Adjacency::Only(first)),
+            (Some(item), Some(right)) => Some(Adjacency::First { item, right }),
+            (Some(item), None) => Some(Adjacency::Only { item }),
             (None, None) => None,
             // The input iterator is fused, so this cannot occur.
             (None, Some(_)) => unreachable!(),
@@ -95,15 +95,23 @@ where
         let next = self.input.next();
         self.adjacency.take().map(|adjacency| {
             self.adjacency = match adjacency.clone() {
-                Adjacency::First(left, item) | Adjacency::Middle(_, left, item) => {
+                Adjacency::First {
+                    item: left,
+                    right: item,
+                }
+                | Adjacency::Middle {
+                    item: left,
+                    right: item,
+                    ..
+                } => {
                     if let Some(right) = next {
-                        Some(Adjacency::Middle(left, item, right))
+                        Some(Adjacency::Middle { left, item, right })
                     }
                     else {
-                        Some(Adjacency::Last(left, item))
+                        Some(Adjacency::Last { left, item })
                     }
                 }
-                Adjacency::Only(_) | Adjacency::Last(_, _) => None,
+                Adjacency::Only { .. } | Adjacency::Last { .. } => None,
             };
             adjacency
         })
@@ -660,13 +668,23 @@ mod tests {
         assert_eq!(adjacent.next(), None);
 
         let mut adjacent = Some(0i32).into_iter().adjacent();
-        assert_eq!(adjacent.next(), Some(Adjacency::Only(0)));
+        assert_eq!(adjacent.next(), Some(Adjacency::Only { item: 0 }));
         assert_eq!(adjacent.next(), None);
 
         let mut adjacent = (0i32..3).adjacent();
-        assert_eq!(adjacent.next(), Some(Adjacency::First(0, 1)));
-        assert_eq!(adjacent.next(), Some(Adjacency::Middle(0, 1, 2)));
-        assert_eq!(adjacent.next(), Some(Adjacency::Last(1, 2)));
+        assert_eq!(
+            adjacent.next(),
+            Some(Adjacency::First { item: 0, right: 1 })
+        );
+        assert_eq!(
+            adjacent.next(),
+            Some(Adjacency::Middle {
+                left: 0,
+                item: 1,
+                right: 2
+            })
+        );
+        assert_eq!(adjacent.next(), Some(Adjacency::Last { left: 1, item: 2 }));
         assert_eq!(adjacent.next(), None);
     }
 
