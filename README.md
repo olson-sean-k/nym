@@ -276,7 +276,7 @@ The `nym` binary can be installed in various ways described below.
 ### Repository
 
 To install `nym` from a clone of the repository, [install Rust][rustup] and then
-build and install `nym` using `cargo`.
+build and install `nym` using `cargo`. Nym requires Rust 1.51 or higher.
 
 ```shell
 git clone https://github.com/olson-sean-k/nym.git
