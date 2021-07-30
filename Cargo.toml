@@ -3,3 +3,6 @@ members = [
     "nym-cli",
     "nym",
 ]
+
+[profile.release]
+lto = true
