@@ -611,6 +611,9 @@ impl<'g, 't> Iterator for Read<'g, 't> {
     type Item = Result<Entry<'static>, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // `while-let` avoids a mutable borrow of `self.walk`, which would
+        // prevent a subsequent call to `skip_current_dir` within the loop body.
+        #[allow(clippy::while_let_on_iterator)]
         'walk: while let Some(entry) = self.walk.next() {
             let entry = match entry {
                 Ok(entry) => entry,
