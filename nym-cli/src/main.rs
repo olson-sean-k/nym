@@ -14,10 +14,6 @@ use nym::pattern::{FromPattern, ToPattern};
 use crate::option::{ChildCommand, Toggle};
 use crate::terminal::{IteratorExt as _, Print, Terminal};
 
-const WARNING_TRANSFORM: &str = "paths may be ambiguous and undetected collisions may cause \
-                                 overwriting, truncation, and data loss; review patterns and paths \
-                                 carefully.";
-
 trait Label {
     const LABEL: &'static str;
 }
@@ -64,7 +60,7 @@ impl Program {
                 ref from,
                 ..
             } => {
-                let from = FromPattern::from(Glob::partitioned(from)?);
+                let from = parse_from_pattern(from)?;
                 let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
                 for entry in from.read(&options.directory, options.depth + 1).flatten() {
                     entry.path().print(&mut output)?;
@@ -243,10 +239,21 @@ struct UnparsedTransform {
 
 impl UnparsedTransform {
     fn parse(&self) -> Result<(FromPattern<'_>, ToPattern<'_>), Error> {
-        let from = Glob::partitioned(&self.from)?.into();
+        let from = parse_from_pattern(&self.from)?;
         let to = ToPattern::new(&self.to)?;
         Ok((from, to))
     }
+}
+
+fn parse_from_pattern(text: &str) -> Result<FromPattern, Error> {
+    let parts = Glob::partitioned(text)?;
+    if parts.1.has_semantic_literals() {
+        terminal::warning(
+            "from-pattern has semantic literal components that likely match no paths; avoid \
+             semantic components like `..` after wildcards and other variant tokens.",
+        )?;
+    }
+    Ok(parts.into())
 }
 
 fn actuate<A>(
@@ -273,7 +280,10 @@ where
             options.common.paging,
             |mut output| manifest.print(&mut output),
         )?;
-        terminal::warning(WARNING_TRANSFORM)?;
+        terminal::warning(
+            "paths may be ambiguous and undetected collisions may cause overwriting, truncation, \
+             and data loss; review patterns and paths carefully.",
+        )?;
     }
     if !terminal::is_interactive(options.interactive)
         || terminal::confirm(format!(

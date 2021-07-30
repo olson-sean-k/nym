@@ -499,6 +499,21 @@ impl<'t> Glob<'t> {
             .unwrap_or(false)
     }
 
+    #[cfg(any(unix, windows))]
+    pub fn has_semantic_literals(&self) -> bool {
+        token::components(self.tokens.iter()).any(|component| {
+            component
+                .literal()
+                .map(|literal| matches!(literal.as_ref(), "." | ".."))
+                .unwrap_or(false)
+        })
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    pub fn has_semantic_literals(&self) -> bool {
+        false
+    }
+
     pub fn is_match(&self, path: impl AsRef<Path>) -> bool {
         let path = BytePath::from_path(path.as_ref());
         self.regex.is_match(&path.path)
