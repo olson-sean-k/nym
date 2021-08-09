@@ -3,6 +3,7 @@ use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::path::{PathBuf, MAIN_SEPARATOR};
 
+use crate::glob::rule;
 use crate::glob::GlobError;
 
 #[derive(Clone, Debug)]
@@ -385,58 +386,29 @@ pub fn parse(text: &str) -> Result<Vec<Token<'_>>, GlobError> {
         )))(input)
     }
 
-    combinator::all_consuming(glob)(text)
+    let tokens = combinator::all_consuming(glob)(text)
         .map(|(_, tokens)| tokens)
-        .map_err(From::from)
+        .map_err(GlobError::from)?;
+    rule::check(tokens.iter())?;
+    Ok(tokens)
 }
 
+// NOTE: Some optimization cases cannot occur using `token::parse` alone, but
+//       all optimizations assume that the token sequence is accepted by
+//       `rule::check`; there are no optimizations for sequences that are
+//       rejected by `rule::check`.
 pub fn optimize<'t>(
     tokens: impl IntoIterator<Item = Token<'t>>,
 ) -> impl Iterator<Item = Token<'t>> {
     tokens
         .into_iter()
-        .dedup_by(|left, right| {
-            matches!(
-                (left, right),
-                (
-                    Token::Wildcard(Wildcard::Tree),
-                    Token::Wildcard(Wildcard::Tree)
-                )
-            )
-        })
-        .dedup_by(|left, right| {
-            matches!(
-                (left, right),
-                (
-                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager)),
-                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager))
-                )
-            )
-        })
-        .dedup_by(|left, right| {
-            matches!(
-                (left, right),
-                (
-                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Lazy)),
-                    Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Lazy))
-                )
-            )
-        })
-        .coalesce(|left, right| match (&left, &right) {
-            (
-                Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager)),
-                Token::Wildcard(Wildcard::ZeroOrMore(_)),
-            )
-            | (
-                Token::Wildcard(Wildcard::ZeroOrMore(_)),
-                Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager)),
-            ) => Ok(Token::Wildcard(Wildcard::ZeroOrMore(Evaluation::Eager))),
-            _ => Err((left, right)),
-        })
+        // Discard empty literal tokens.
         .filter(|token| match &token {
             Token::Literal(ref literal) => !literal.is_empty(),
             _ => true,
         })
+        // Coalesce adjacent literal tokens into a single concatenated literal
+        // token.
         .coalesce(|left, right| match (&left, &right) {
             (Token::Literal(ref left), Token::Literal(ref right)) => {
                 Ok(Token::Literal(format!("{}{}", left, right).into()))

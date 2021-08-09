@@ -1,3 +1,14 @@
+//! Rules and limitations for token sequences.
+//!
+//! This module provides the `check` function, which examines a token sequence
+//! and emits an error if the sequence violates rules. Rules are invariants that
+//! are difficult or impossible to enforce when parsing text and primarily
+//! detect and reject token sequences that produce anomalous, meaningless, or
+//! unexpected globs (regular expressions) when compiled.
+//!
+//! Most rules concern alternatives, which have complex interactions with
+//! neighboring tokens.
+
 use itertools::Itertools as _;
 use thiserror::Error;
 
@@ -7,12 +18,14 @@ use crate::glob::{IteratorExt as _, SliceExt as _, Terminals};
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum RuleError {
+    #[error("invalid separator `/` in alternative")]
+    AlternativeSeparator,
     #[error("invalid tree wildcard `**` in alternative")]
     AlternativeTree,
     #[error("invalid zero-or-more wildcard `*` or `$` in alternative")]
     AlternativeZeroOrMore,
-    #[error("invalid separator `/`")]
-    SeparatorAdjacent,
+    #[error("adjacent component boundaries `/` or `**`")]
+    BoundaryAdjacent,
 }
 
 pub fn check<'t, I>(tokens: I) -> Result<(), RuleError>
@@ -22,7 +35,7 @@ where
 {
     let tokens = tokens.into_iter();
     alternative(tokens.clone())?;
-    separator(tokens)?;
+    boundary(tokens)?;
     Ok(())
 }
 
@@ -31,7 +44,7 @@ where
     I: IntoIterator<Item = &'t Token<'t>>,
     I::IntoIter: Clone,
 {
-    use crate::glob::token::Token::{Alternative, Wildcard};
+    use crate::glob::token::Token::{Alternative, Separator, Wildcard};
     use crate::glob::token::Wildcard::{Tree, ZeroOrMore};
     use crate::glob::Terminals::{Only, StartEnd};
 
@@ -65,18 +78,50 @@ where
         Ok(())
     }
 
+    // NOTE: Terminal tree tokens are permitted even when an alternative is
+    //       adjacent to components or terminations (separators). Such tree
+    //       tokens compose with separators, because they compile as prefix or
+    //       postfix forms despite being intermediate to the glob. This differs
+    //       from terminal separators within an alternative, which do not
+    //       compose and are rejected when adjacent to components or
+    //       terminations. For example, `{foo/**}/bar` is allowed (note the
+    //       separator in `/bar`) but `{foo/}/bar` is not.
     fn check<'t>(
         terminals: Terminals<&Token<'t>>,
         left: Option<&Token<'t>>,
         right: Option<&Token<'t>>,
     ) -> Result<(), RuleError> {
         match terminals {
-            // TODO: Do not consider this an error and instead detect this in
-            //       `token::optimize` and replace `{...,**,...}` with `**`.
+            Only(Separator) if left.is_none() || right.is_none() => {
+                // The alternative is adjacent to components or terminations;
+                // disallow singular separators.
+                //
+                // For example, `foo/{bar,/}`.
+                Err(RuleError::AlternativeSeparator)
+            }
+            StartEnd(Separator, _) if left.is_none() => {
+                // The alternative is preceded by components or terminations;
+                // disallow leading separators.
+                //
+                // For example, `foo/{bar,/baz}`.
+                Err(RuleError::AlternativeSeparator)
+            }
+            StartEnd(_, Separator) if right.is_none() => {
+                // The alternative is followed by components or terminations;
+                // disallow trailing separators.
+                //
+                // For example, `{foo,bar/}/baz`.
+                Err(RuleError::AlternativeSeparator)
+            }
             Only(Wildcard(Tree)) => {
+                // NOTE: Supporting singular tree tokens is possible, but
+                //       presents subtle edge cases that may be misleading or
+                //       confusing. Rather than optimize or otherwise allow
+                //       singular tree tokens, they are forbidden for
+                //       simplicity.
                 // Disallow singular tree tokens.
                 //
-                // For example, `{foo,**}`.
+                // For example, `{foo,bar,**}`.
                 Err(RuleError::AlternativeTree)
             }
             StartEnd(Wildcard(Tree), _) if left.is_some() => {
@@ -128,7 +173,7 @@ where
     recurse(token::components(tokens), (None, None))
 }
 
-fn separator<'t, I>(tokens: I) -> Result<(), RuleError>
+fn boundary<'t, I>(tokens: I) -> Result<(), RuleError>
 where
     I: IntoIterator<Item = &'t Token<'t>>,
     I::IntoIter: Clone,
@@ -136,9 +181,9 @@ where
     if tokens
         .into_iter()
         .tuple_windows::<(_, _)>()
-        .any(|adjacent| matches!(adjacent, (Token::Separator, Token::Separator)))
+        .any(|(left, right)| left.is_component_boundary() && right.is_component_boundary())
     {
-        Err(RuleError::SeparatorAdjacent)
+        Err(RuleError::BoundaryAdjacent)
     }
     else {
         Ok(())

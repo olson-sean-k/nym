@@ -446,7 +446,6 @@ impl<'t> Glob<'t> {
 
     pub fn new(text: &'t str) -> Result<Self, GlobError> {
         let tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
-        rule::check(tokens.iter())?;
         let regex = Glob::compile(tokens.iter());
         Ok(Glob { tokens, regex })
     }
@@ -474,7 +473,6 @@ impl<'t> Glob<'t> {
         }
 
         let mut tokens: Vec<_> = token::optimize(token::parse(text)?).collect();
-        rule::check(tokens.iter())?;
         let prefix = token::literal_path_prefix(tokens.iter()).unwrap_or_else(PathBuf::new);
         tokens.drain(0..literal_prefix_upper_bound(&tokens));
         let regex = Glob::compile(tokens.iter());
@@ -595,6 +593,9 @@ impl<'g, 't> Read<'g, 't> {
                 Token::Alternative(ref alternative) => alternative.has_component_boundary(),
                 token => token.is_component_boundary(),
             }) {
+                // NOTE: `token::components` omits any separators outside of
+                //       alternatives, so this will not stop at top-level
+                //       separators.
                 // Stop at component boundaries, such as tree wildcards or any
                 // boundary within an alternative token.
                 break;
@@ -755,7 +756,6 @@ mod tests {
         Glob::new("**/a").unwrap();
         Glob::new("a/**").unwrap();
         Glob::new("**/a/**/b/**").unwrap();
-        Glob::new("**/**/a").unwrap();
     }
 
     #[test]
@@ -818,6 +818,7 @@ mod tests {
     fn reject_glob_with_adjacent_tree_or_zom_tokens() {
         assert!(Glob::new("***").is_err());
         assert!(Glob::new("****").is_err());
+        assert!(Glob::new("**/**").is_err());
         assert!(Glob::new("**/*/***").is_err());
         assert!(Glob::new("**$").is_err());
         assert!(Glob::new("**/$**").is_err());
@@ -865,6 +866,8 @@ mod tests {
     #[test]
     fn reject_glob_with_invalid_alternative_tree_tokens() {
         assert!(Glob::new("{**}").is_err());
+        assert!(Glob::new("prefix{**/error}").is_err());
+        assert!(Glob::new("{error/**}postfix").is_err());
         assert!(Glob::new("prefix{okay/**,**/error}").is_err());
         assert!(Glob::new("{**/okay,error/**}postfix").is_err());
         assert!(Glob::new("{**/okay,prefix{error/**}}postfix").is_err());

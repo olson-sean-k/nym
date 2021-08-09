@@ -71,8 +71,9 @@ and does not terminate the pattern, its capture includes a trailing path
 separator. If a tree wildcard does not participate in a match, its capture is an
 empty string with no path separator. Tree wildcards must be delimited by path
 separators or a termination (such as the beginning and/or end of a glob or
-sub-glob). If a glob consists solely of a tree wildcard, then it matches all
-files in the working directory tree.
+sub-glob). Tree wildcards cannot be adjacent to other tree wildcards. If a glob
+consists solely of a tree wildcard, then it matches all files in the working
+directory tree.
 
 The zero-or-more wildcards `*` and `$` match zero or more of any character
 **except path separators**. Zero-or-more wildcards cannot be adjacent to other
@@ -113,7 +114,7 @@ escaped via a backslash, such as `[a\-]` to match `a` or `-`.
 Alternatives match an arbitrary sequence of comma separated sub-globs delimited
 by curly braces `{...,...}`. For example, `{a?c,x?z,foo}` matches any of the
 sub-globs `a?c`, `x?z`, or `foo` in order. Alternatives may be arbitrarily
-nested, such as in `a{b,c{d,e{f,g}}}`.
+nested, such as in `{a,{b,{c,d}}}`.
 
 Alternatives form a single capture group regardless of the contents of their
 sub-globs. This capture is formed from the complete match of the sub-glob, so if
@@ -123,12 +124,17 @@ Alternatives can be used to group capture text using a single sub-glob, such as
 `{*.{go,rs}}` to capture an entire file name with a particular extension or
 `{??}` to group a sequence of exactly-one wildcards.
 
-Sub-globs, in particular those containing wildcards, must consider neighboring
-patterns. For example, it is not possible to introduce a tree wildcard that is
-adjacent to anything but a path separator or termination, so `foo{bar,baz/**}`
-is allowed but `foo{bar,**/baz}` is not. Because it matches anything, singular
-tree wildcards are **never** allowed in sub-globs, so `foo/{bar,**}` is
-disallowed.
+Sub-globs, especially those with path boundaries, must consider neighboring
+patterns and have limitations. For example, wildcards and path separators
+generally cannot be adjacent, so `a{b,c/**}` and `a{/b,/c}` are allowed but
+`a{b,**/c}` and `a/{/b,c}` are not. Additionally, singular tree wildcards are
+never allowed in alternatives, such as `{a,**}`. Such an alternative is
+equivalent to a tree wildcard `**`, which should be used instead.
+
+Regarding the above limitations, note that tree wildcards parse any surrounding
+forward slashes `/`, so `a/{/**/b,c}` is allowed despite appearing to have
+adjacent path separators; the leading `/` in the sub-glob `/**/b` is parsed as a
+tree wildcard and **not** an independent path separator.
 
 ### Literals and Platform-specific Features
 
