@@ -62,7 +62,7 @@ impl Program {
             } => {
                 let from = parse_from_pattern(from)?;
                 let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
-                for entry in from.read(&options.directory, options.depth + 1).flatten() {
+                for entry in from.walk(&options.directory, options.depth + 1).flatten() {
                     entry.path().print(&mut output)?;
                 }
                 Ok(())

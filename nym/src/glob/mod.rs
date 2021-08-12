@@ -129,10 +129,10 @@ trait PositionExt<T> {
 impl<T> PositionExt<T> for Position<T> {
     fn as_tuple(&self) -> (Position<()>, &T) {
         match *self {
-            Position::First(ref inner) => (Position::First(()), inner),
-            Position::Middle(ref inner) => (Position::Middle(()), inner),
-            Position::Last(ref inner) => (Position::Last(()), inner),
-            Position::Only(ref inner) => (Position::Only(()), inner),
+            Position::First(ref item) => (Position::First(()), item),
+            Position::Middle(ref item) => (Position::Middle(()), item),
+            Position::Last(ref item) => (Position::Last(()), item),
+            Position::Only(ref item) => (Position::Only(()), item),
         }
     }
 
@@ -141,10 +141,10 @@ impl<T> PositionExt<T> for Position<T> {
         T: Borrow<B>,
     {
         match *self {
-            Position::First(ref inner) => Position::First(inner.borrow()),
-            Position::Middle(ref inner) => Position::Middle(inner.borrow()),
-            Position::Last(ref inner) => Position::Last(inner.borrow()),
-            Position::Only(ref inner) => Position::Only(inner.borrow()),
+            Position::First(ref item) => Position::First(item.borrow()),
+            Position::Middle(ref item) => Position::Middle(item.borrow()),
+            Position::Last(ref item) => Position::Last(item.borrow()),
+            Position::Only(ref item) => Position::Only(item.borrow()),
         }
     }
 }
@@ -179,8 +179,8 @@ pub enum GlobError {
     Parse(nom::Err<(String, ErrorKind)>),
     #[error("invalid glob: {0}")]
     Rule(RuleError),
-    #[error("failed to read directory tree: {0}")]
-    Read(walkdir::Error),
+    #[error("failed to walk directory tree: {0}")]
+    Walk(walkdir::Error),
 }
 
 impl<'i> From<nom::Err<(&'i str, ErrorKind)>> for GlobError {
@@ -191,7 +191,7 @@ impl<'i> From<nom::Err<(&'i str, ErrorKind)>> for GlobError {
 
 impl From<walkdir::Error> for GlobError {
     fn from(error: walkdir::Error) -> Self {
-        GlobError::Read(error)
+        GlobError::Walk(error)
     }
 }
 
@@ -239,10 +239,7 @@ impl<'b> BytePath<'b> {
         Self::from_bytes(Vec::from_os_str_lossy(text))
     }
 
-    pub fn from_path<P>(path: &'b P) -> Self
-    where
-        P: AsRef<Path> + ?Sized,
-    {
+    pub fn from_path(path: &'b (impl AsRef<Path> + ?Sized)) -> Self {
         Self::from_bytes(Vec::from_path_lossy(path.as_ref()))
     }
 
@@ -265,33 +262,33 @@ impl<'b> AsRef<[u8]> for BytePath<'b> {
 }
 
 #[derive(Debug)]
-pub struct Entry<'t> {
-    inner: DirEntry,
+pub struct WalkEntry<'t> {
+    entry: DirEntry,
     captures: Captures<'t>,
 }
 
-impl<'t> Entry<'t> {
+impl<'t> WalkEntry<'t> {
     pub fn into_path(self) -> PathBuf {
-        self.inner.into_path()
+        self.entry.into_path()
     }
 
     pub fn path(&self) -> &Path {
-        self.inner.path()
+        self.entry.path()
     }
 
     pub fn file_type(&self) -> FileType {
-        self.inner.file_type()
+        self.entry.file_type()
     }
 
     // TODO: On some platforms, traversing a directory tree also yields file
     //       metadata (e.g., Windows). Forward this metadata to path printing
     //       using `lscolors` in `nym-cli` to avoid unnecessary reads.
     pub fn metadata(&self) -> Result<Metadata, GlobError> {
-        self.inner.metadata().map_err(From::from)
+        self.entry.metadata().map_err(From::from)
     }
 
     pub fn depth(&self) -> usize {
-        self.inner.depth()
+        self.entry.depth()
     }
 
     pub fn captures(&self) -> &Captures<'t> {
@@ -521,13 +518,13 @@ impl<'t> Glob<'t> {
         self.regex.captures(path.as_ref()).map(From::from)
     }
 
-    pub fn read(
+    pub fn walk(
         &self,
         directory: impl AsRef<Path>,
         depth: usize,
-    ) -> impl '_ + Iterator<Item = Result<Entry<'static>, GlobError>> {
+    ) -> impl '_ + Iterator<Item = Result<WalkEntry<'static>, GlobError>> {
         // The directory tree is traversed from `root`, which may include a path
-        // prefix from the glob pattern. `Read` patterns are only applied to
+        // prefix from the glob pattern. `Walk` patterns are only applied to
         // path components following the `prefix` in `root`.
         let (prefix, root) = if let Some(prefix) = token::literal_path_prefix(self.tokens.iter()) {
             let root: Cow<'_, Path> = directory.as_ref().join(&prefix).into();
@@ -544,8 +541,8 @@ impl<'t> Glob<'t> {
             let root: Cow<'_, Path> = directory.as_ref().into();
             (root.clone(), root)
         };
-        let regexes = Read::compile(self.tokens.iter());
-        Read {
+        let regexes = Walk::compile(self.tokens.iter());
+        Walk {
             glob: self,
             regexes,
             prefix: prefix.into_owned(),
@@ -574,14 +571,14 @@ impl FromStr for Glob<'static> {
     }
 }
 
-struct Read<'g, 't> {
+struct Walk<'g, 't> {
     glob: &'g Glob<'t>,
     regexes: Vec<Regex>,
     prefix: PathBuf,
     walk: walkdir::IntoIter,
 }
 
-impl<'g, 't> Read<'g, 't> {
+impl<'g, 't> Walk<'g, 't> {
     fn compile<I>(tokens: I) -> Vec<Regex>
     where
         I: IntoIterator<Item = &'t Token<'t>>,
@@ -608,8 +605,8 @@ impl<'g, 't> Read<'g, 't> {
     }
 }
 
-impl<'g, 't> Iterator for Read<'g, 't> {
-    type Item = Result<Entry<'static>, GlobError>;
+impl<'g, 't> Iterator for Walk<'g, 't> {
+    type Item = Result<WalkEntry<'static>, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // `while-let` avoids a mutable borrow of `self.walk`, which would
@@ -640,10 +637,7 @@ impl<'g, 't> Iterator for Read<'g, 't> {
                             let bytes = BytePath::from_path(path);
                             if let Some(captures) = self.glob.captures(&bytes) {
                                 let captures = captures.into_owned();
-                                return Some(Ok(Entry {
-                                    inner: entry,
-                                    captures,
-                                }));
+                                return Some(Ok(WalkEntry { entry, captures }));
                             }
                         }
                         else {
@@ -659,10 +653,7 @@ impl<'g, 't> Iterator for Read<'g, 't> {
                         let bytes = BytePath::from_path(path);
                         if let Some(captures) = self.glob.captures(&bytes) {
                             let captures = captures.into_owned();
-                            return Some(Ok(Entry {
-                                inner: entry,
-                                captures,
-                            }));
+                            return Some(Ok(WalkEntry { entry, captures }));
                         }
                     }
                     EitherOrBoth::Right(_) => {

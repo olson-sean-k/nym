@@ -10,8 +10,8 @@ use crate::pattern::{FromPattern, PatternError, ToPattern};
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TransformError {
-    #[error("failed to traverse directory tree: {0}")]
-    Read(GlobError),
+    #[error("failed to apply glob: {0}")]
+    Glob(GlobError),
     #[error("failed to resolve to-pattern: {0}")]
     PatternResolution(PatternError),
     #[error("failed to insert route: {0}")]
@@ -70,8 +70,8 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
         }
 
         let mut manifest = Manifest::default();
-        for entry in self.from.read(directory.as_ref(), depth) {
-            let entry = entry.map_err(TransformError::Read)?;
+        for entry in self.from.walk(directory.as_ref(), depth) {
+            let entry = entry.map_err(TransformError::Glob)?;
             let source = entry.path();
             let mut destination = directory.as_ref().to_path_buf();
             destination.push(
