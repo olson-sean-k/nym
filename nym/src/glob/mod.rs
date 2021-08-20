@@ -261,15 +261,27 @@ impl<'b> AsRef<[u8]> for BytePath<'b> {
     }
 }
 
+/// Describes a file matching a `Glob` in a directory tree.
 #[derive(Debug)]
-pub struct WalkEntry<'t> {
-    entry: DirEntry,
-    captures: Captures<'t>,
+pub struct WalkEntry<'e> {
+    entry: Cow<'e, DirEntry>,
+    captures: Captures<'e>,
 }
 
-impl<'t> WalkEntry<'t> {
+impl<'e> WalkEntry<'e> {
+    pub fn into_owned(self) -> WalkEntry<'static> {
+        let WalkEntry { entry, captures } = self;
+        WalkEntry {
+            entry: Cow::Owned(entry.into_owned()),
+            captures: captures.into_owned(),
+        }
+    }
+
     pub fn into_path(self) -> PathBuf {
-        self.entry.into_path()
+        match self.entry {
+            Cow::Borrowed(entry) => entry.path().to_path_buf(),
+            Cow::Owned(entry) => entry.into_path(),
+        }
     }
 
     pub fn path(&self) -> &Path {
@@ -291,7 +303,7 @@ impl<'t> WalkEntry<'t> {
         self.entry.depth()
     }
 
-    pub fn captures(&self) -> &Captures<'t> {
+    pub fn captures(&self) -> &Captures<'e> {
         &self.captures
     }
 }
@@ -518,11 +530,7 @@ impl<'t> Glob<'t> {
         self.regex.captures(path.as_ref()).map(From::from)
     }
 
-    pub fn walk(
-        &self,
-        directory: impl AsRef<Path>,
-        depth: usize,
-    ) -> impl '_ + Iterator<Item = Result<WalkEntry<'static>, GlobError>> {
+    pub fn walk(&self, directory: impl AsRef<Path>, depth: usize) -> Walk {
         // The directory tree is traversed from `root`, which may include a path
         // prefix from the glob pattern. `Walk` patterns are only applied to
         // path components following the `prefix` in `root`.
@@ -571,7 +579,86 @@ impl FromStr for Glob<'static> {
     }
 }
 
-struct Walk<'g, 't> {
+/// Traverses a directory tree via a `Walk` instance.
+///
+/// This macro emits an interruptable loop that executes a block of code
+/// whenever a `WalkEntry` or error is encountered while traversing a directory
+/// tree. The block may return from its function or otherwise interrupt and
+/// subsequently resume the loop.
+///
+/// Note that if the block attempts to emit a `WalkEntry` across a function
+/// boundary that the entry must copy its contents via `into_owned`.
+macro_rules! walk {
+    ($walk:expr => |$entry:ident| $f:block) => {
+        // `while-let` avoids a mutable borrow of `walk`, which would prevent a
+        // subsequent call to `skip_current_dir` within the loop body.
+        #[allow(clippy::while_let_on_iterator)]
+        #[allow(unreachable_code)]
+        'walk: while let Some(entry) = $walk.walk.next() {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    let $entry = Err(error.into());
+                    $f
+                    continue 'walk; // May be unreachable.
+                }
+            };
+            let path = entry
+                .path()
+                .strip_prefix(&$walk.prefix)
+                .expect("path is not in tree");
+            for candidate in path
+                .components()
+                .filter_map(|component| match component {
+                    Component::Normal(text) => Some(text.to_str().unwrap().as_bytes()),
+                    _ => None,
+                })
+                .zip_longest($walk.regexes.iter())
+            {
+                match candidate {
+                    EitherOrBoth::Both(component, regex) => {
+                        if regex.is_match(component) {
+                            let bytes = BytePath::from_path(&path);
+                            if let Some(captures) = $walk.glob.captures(&bytes) {
+                                let $entry = Ok(WalkEntry {
+                                    entry: Cow::Borrowed(&entry),
+                                    captures,
+                                });
+                                $f
+                                continue 'walk; // May be unreachable.
+                            }
+                        }
+                        else {
+                            // Do not descend into directories that do not
+                            // match the corresponding component regex.
+                            if entry.file_type().is_dir() {
+                                $walk.walk.skip_current_dir();
+                            }
+                            continue 'walk;
+                        }
+                    }
+                    EitherOrBoth::Left(_) => {
+                        let bytes = BytePath::from_path(&path);
+                        if let Some(captures) = $walk.glob.captures(&bytes) {
+                            let $entry = Ok(WalkEntry {
+                                entry: Cow::Borrowed(&entry),
+                                captures,
+                            });
+                            $f
+                            continue 'walk; // May be unreachable.
+                        }
+                    }
+                    EitherOrBoth::Right(_) => {
+                        continue 'walk;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Iterator over files matching a `Glob` in a directory tree.
+pub struct Walk<'g, 't> {
     glob: &'g Glob<'t>,
     regexes: Vec<Regex>,
     prefix: PathBuf,
@@ -603,65 +690,26 @@ impl<'g, 't> Walk<'g, 't> {
         }
         regexes
     }
+
+    /// Calls a closure on each matched file or error.
+    ///
+    /// This function does not copy the contents of paths and captures when
+    /// emitting entries and so may be more efficient than external iteration
+    /// via `Iterator` (and `Iterator::for_each`).
+    pub fn for_each(mut self, mut f: impl FnMut(Result<WalkEntry, GlobError>)) {
+        walk!(self => |entry| {
+            f(entry);
+        });
+    }
 }
 
 impl<'g, 't> Iterator for Walk<'g, 't> {
     type Item = Result<WalkEntry<'static>, GlobError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // `while-let` avoids a mutable borrow of `self.walk`, which would
-        // prevent a subsequent call to `skip_current_dir` within the loop body.
-        #[allow(clippy::while_let_on_iterator)]
-        'walk: while let Some(entry) = self.walk.next() {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(error) => {
-                    return Some(Err(error.into()));
-                }
-            };
-            let path = entry
-                .path()
-                .strip_prefix(&self.prefix)
-                .expect("path is not in tree");
-            for candidate in path
-                .components()
-                .filter_map(|component| match component {
-                    Component::Normal(text) => Some(text.to_str().unwrap().as_bytes()),
-                    _ => None,
-                })
-                .zip_longest(self.regexes.iter())
-            {
-                match candidate {
-                    EitherOrBoth::Both(component, regex) => {
-                        if regex.is_match(component) {
-                            let bytes = BytePath::from_path(path);
-                            if let Some(captures) = self.glob.captures(&bytes) {
-                                let captures = captures.into_owned();
-                                return Some(Ok(WalkEntry { entry, captures }));
-                            }
-                        }
-                        else {
-                            // Do not descend into directories that do not
-                            // match the corresponding component regex.
-                            if entry.file_type().is_dir() {
-                                self.walk.skip_current_dir();
-                            }
-                            continue 'walk;
-                        }
-                    }
-                    EitherOrBoth::Left(_) => {
-                        let bytes = BytePath::from_path(path);
-                        if let Some(captures) = self.glob.captures(&bytes) {
-                            let captures = captures.into_owned();
-                            return Some(Ok(WalkEntry { entry, captures }));
-                        }
-                    }
-                    EitherOrBoth::Right(_) => {
-                        continue 'walk;
-                    }
-                }
-            }
-        }
+        walk!(self => |entry| {
+            return Some(entry.map(|entry: WalkEntry| entry.into_owned()));
+        });
         None
     }
 }
