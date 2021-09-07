@@ -46,23 +46,35 @@ The following command finds all files beneath a `src` directory with either the
 nym find '**/src/**/*.{go,rs}'
 ```
 
+The following command normalizes the case and extension of `README` Markdown
+files.
+
+```shell
+nym move -w '**/(?i)readme.{md,mkd,markdown}' '{#1}README.md'
+```
+
 ## From-Patterns
 
-From-patterns match source files to actuate using Unix-like globs. These globs
-resemble literal paths, but additionally support wildcards, character classes,
-and alternatives that can be matched against paths on the file system. Matches
-provide capture text that can be used in to-patterns.
+From-patterns match source files to actuate using globs powered by [Wax][wax].
+These globs resemble Unix paths, but additionally support patterns like
+wildcards and alternatives that can be matched against paths on the file system.
+Matches provide capture text that can be used in to-patterns. The syntax is
+described here but is somewhat abbreviated. See the [pattern documentation for
+Wax][wax-patterns] for more details, especially regarding limitations and
+errors.
 
-Globs are opinionated about path separators. Forward slash `/` is **always** the
-path separator and back slashes `\` are forbidden (back slash is used for escape
-sequences, but the literal sequence `\\` is not supported). Separators are
-normalized across platforms; glob patterns can match paths on Windows, for
-example.
+Globs are portable and have a dedicated syntax (they are **not** formed from
+native paths). Forward slash `/` is **always** the path separator and back
+slashes `\` are forbidden. All control characters can be escaped via a preceding
+back slash `\` within relevant contexts, but the literal sequence `\\` is not
+supported.
+
+The terms "from-pattern" and "glob" are used interchangeably.
 
 ### Wildcards
 
 Wildcards match some amount of arbitrary text in paths and are the most
-fundamental tool provided by globs.
+fundamental tool provided by from-patterns.
 
 The tree wildcard `**` matches zero or more sub-directories. **This is the only
 way to match against arbitrary directories**; all other wildcards do **not**
@@ -70,10 +82,9 @@ match across directory boundaries. When a tree wildcard participates in a match
 and does not terminate the pattern, its capture includes a trailing path
 separator. If a tree wildcard does not participate in a match, its capture is an
 empty string with no path separator. Tree wildcards must be delimited by path
-separators or a termination (such as the beginning and/or end of a glob or
-sub-glob). Tree wildcards cannot be adjacent to other tree wildcards. If a glob
-consists solely of a tree wildcard, then it matches all files in the working
-directory tree.
+separators or a termination. Tree wildcards cannot be adjacent to other tree
+wildcards. If a from-pattern consists solely of a tree wildcard, then it matches
+all files in the working directory tree.
 
 The zero-or-more wildcards `*` and `$` match zero or more of any character
 **except path separators**. Zero-or-more wildcards cannot be adjacent to other
@@ -85,8 +96,6 @@ that literal while `$` stops at the first occurence.
 The exactly-one wildcard `?` matches any single character **except path
 separators**. Exactly-one wildcards do not group automatically, so a pattern of
 contiguous wildcards such as `???` form distinct captures for each `?` wildcard.
-An alternative can be used to group exactly-one wildcards into a single capture,
-such as `{???}` (see below).
 
 ### Character Classes
 
@@ -96,78 +105,58 @@ Individual character literals are specified as is, such as `[ab]` to match
 either `a` or `b`. Character ranges are formed from two characters separated by
 a hyphen, such as `[x-z]` to match `x`, `y`, or `z`.
 
-Any number of character literals and ranges can be used within a single
-character class. For example, `[qa-cX-Z]` matches any of `q`, `a`, `b`, `c`,
-`X`, `Y`, or `Z`.
-
 Character classes may be negated by including an exclamation mark `!` at the
 beginning of the class pattern. For example, `[!a]` matches any character except
 for `a`.
-
-Note that character classes can also be used to escape metacharacters like `*`,
-`$`, etc., though globs also support escaping via a backslash `\`. To match the
-control characters `[`, `]`, and `-` within a character class, they must be
-escaped via a backslash, such as `[a\-]` to match `a` or `-`.
 
 ### Alternatives
 
 Alternatives match an arbitrary sequence of comma separated sub-globs delimited
 by curly braces `{...,...}`. For example, `{a?c,x?z,foo}` matches any of the
-sub-globs `a?c`, `x?z`, or `foo` in order. Alternatives may be arbitrarily
-nested, such as in `{a,{b,{c,d}}}`.
+sub-globs `a?c`, `x?z`, or `foo`. Alternatives may be arbitrarily nested, such
+as in `{a,{b,{c,d}}}`.
 
 Alternatives form a single capture group regardless of the contents of their
 sub-globs. This capture is formed from the complete match of the sub-glob, so if
 the sub-glob `a?c` matches `abc` in `{a?c,x?z}`, then the capture text will be
 `abc` (**not** `b` as it would be outside of an alternative sequence).
 Alternatives can be used to group capture text using a single sub-glob, such as
-`{*.{go,rs}}` to capture an entire file name with a particular extension or
-`{??}` to group a sequence of exactly-one wildcards.
+`{*.{go,rs}}` to capture an entire file name with particular extensions or
+`{???}` to group a sequence of exactly-one wildcards.
 
-Sub-globs, especially those with path boundaries, must consider neighboring
-patterns and have limitations. For example, wildcards and path separators
-generally cannot be adjacent, so `a{b,c/**}` and `a{/b,/c}` are allowed but
-`a{b,**/c}` and `a/{/b,c}` are not. Additionally, singular tree wildcards are
-never allowed in alternatives, such as `{a,**}`. Such an alternative is
-equivalent to a tree wildcard `**`, which should be used instead.
+Sub-globs must consider neighboring patterns. For example, separators and some
+wildcards cannot be adjacent, so `a{b,c/**}` and `a{/b,/c}` are allowed but
+`a/{b,**/c}` and `a/{/b,c}` are not.
 
-Regarding the above limitations, note that tree wildcards parse any surrounding
-forward slashes `/`, so `a/{/**/b,c}` is allowed despite appearing to have
-adjacent path separators; the leading `/` in the sub-glob `/**/b` is parsed as a
-tree wildcard and **not** an independent path separator.
+### Unsupported Features
 
-### Literals and Platform-specific Features
-
-Any components not recognized by globs are interpreted as literals. In
-combination with strict interpretations of path separators, this means some
-platform-specific features cannot be used as part of a from-pattern.
-
-In particular, while from-patterns can be rooted, they cannot include schemes
-nor Windows path prefixes. On Windows, UNC paths or paths with other prefixes
-can be used via the `--tree`/`-C` option, which establishes the directory in
-which from-patterns are applied using native paths. For example, the following
-command copies all files from the UNC share path `\\server\share\src`.
+From-patterns do not support platform-specific path features. In particular,
+while from-patterns can be rooted, they cannot include schemes nor Windows path
+prefixes. On Windows, UNC paths or paths with other prefixes can be used via the
+`--tree`/`-C` option, which establishes the directory in which from-patterns are
+applied using native paths. For example, the following command copies all files
+from the UNC share path `\\server\share\src`.
 
 ```shell
 nym copy -p --tree=\\server\share 'src/**' 'C:\\backup\\{#1}'
 ```
 
-Globs do not explicitly support the notion of a parent directory. However, any
-invariant (literal) prefix is re-interpreted by the platform as a native path,
-so from-patterns that begin with `..` behave as expected on Unix and Windows.
-For example, the following command intuitively operates in the parent of the
-current working directory.
+From-patterns do not explicitly support the notion of a parent directory.
+However, any invariant prefix is re-interpreted by the platform as a native
+path, so from-patterns that begin with `..` behave as expected on Unix and
+Windows. For example, the following command intuitively operates in the parent
+of the current working directory.
 
 ```shell
 nym find '../src/*.rs'
 ```
 
-However, `..` is interpreted as a literal and when it follows variant
-(non-literal) components in a glob it only matches paths with the literal
-component `..`. This never occurs when traversing directory trees, **so `..`
-literals following variant patterns like wildcards match nothing and should not
-be used**. For example, the from-pattern `src/**/../*.rs` never yields any
-matching files.
+However, `..` is interpreted as a literal and when it follows variant components
+in a from-pattern it only matches paths with the **literal** component `..`.
+This never occurs when traversing directory trees, **so `..` literals following
+variant patterns like wildcards match nothing and should not be used**. For
+example, the from-pattern `src/**/../*.rs` never yields any matching files. Nym
+prints a warning if such a from-pattern is detected.
 
 ## To-Patterns
 
@@ -335,6 +324,8 @@ experimental and likely has bugs. Data loss may occur. **Use at your own risk.**
 [MD5]: https://en.wikipedia.org/wiki/MD5
 [rustup]: https://rustup.rs/
 [`strftime`]: https://docs.rs/chrono/0.4.19/chrono/format/strftime/index.html
+[wax]: https://github.com/olson-sean-k/wax
+[wax-patterns]: https://github.com/olson-sean-k/wax#patterns
 
 [`nym`]: https://crates.io/crates/nym
 [`nym-cli`]: https://crates.io/crates/nym-cli

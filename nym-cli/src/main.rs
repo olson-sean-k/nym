@@ -7,7 +7,6 @@ use structopt::StructOpt;
 
 use nym::actuator::{Copy, HardLink, Move, Operation, SoftLink};
 use nym::environment::{Environment, Policy};
-use nym::glob::Glob;
 use nym::manifest::Manifest;
 use nym::pattern::{FromPattern, ToPattern};
 
@@ -32,6 +31,23 @@ impl Label for Move {
 
 impl Label for SoftLink {
     const LABEL: &'static str = "soft link";
+}
+
+trait FromPatternExt<'t>: Sized {
+    fn new_with_warnings(text: &'t str) -> Result<Self, Error>;
+}
+
+impl<'t> FromPatternExt<'t> for FromPattern<'t> {
+    fn new_with_warnings(text: &'t str) -> Result<Self, Error> {
+        let from = FromPattern::new(text)?;
+        if from.has_semantic_literals() {
+            terminal::warning(
+                "from-pattern has semantic literal components that likely match no paths; avoid \
+                 semantic components like `..` after wildcards and other variant components.",
+            )?;
+        }
+        Ok(from)
+    }
 }
 
 /// Append, copy, link, and move files using patterns.
@@ -60,7 +76,7 @@ impl Program {
                 ref from,
                 ..
             } => {
-                let from = parse_from_pattern(from)?;
+                let from = FromPattern::new_with_warnings(from)?;
                 let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
                 for entry in from.walk(&options.directory, options.depth + 1).flatten() {
                     entry.path().print(&mut output)?;
@@ -239,21 +255,10 @@ struct UnparsedTransform {
 
 impl UnparsedTransform {
     fn parse(&self) -> Result<(FromPattern<'_>, ToPattern<'_>), Error> {
-        let from = parse_from_pattern(&self.from)?;
+        let from = FromPattern::new_with_warnings(&self.from)?;
         let to = ToPattern::new(&self.to)?;
         Ok((from, to))
     }
-}
-
-fn parse_from_pattern(text: &str) -> Result<FromPattern, Error> {
-    let parts = Glob::partitioned(text)?;
-    if parts.1.has_semantic_literals() {
-        terminal::warning(
-            "from-pattern has semantic literal components that likely match no paths; avoid \
-             semantic components like `..` after wildcards and other variant tokens.",
-        )?;
-    }
-    Ok(parts.into())
 }
 
 fn actuate<A>(

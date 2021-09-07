@@ -13,9 +13,7 @@ keywords = [
     "pattern",
     "regex"
 ]
-categories = [
-    "filesystem"
-]
+categories = ["filesystem"]
 
 [features]
 default = [
@@ -27,18 +25,20 @@ property-md5sum = ['md5']
 
 [dependencies]
 bimap = "^0.6.0"
-bstr = "^0.2.0"
 chrono = "^0.4.0"
 faccess = "^0.2.0"
 itertools = "^0.10.0"
-nom = "^6.1.0"
-os_str_bytes = "^3.1.0"
-regex = "^1.5.0"
+miette = "^3.0.0"
+nom = "^7.0.0"
 smallvec = "^1.5.0"
 thiserror = "^1.0.0"
 titlecase = "^1.1.0"
 unicode-width = "^0.1.0"
-walkdir = "^2.3.0"
+
+[dependencies.wax]
+version = "^0.3.0"
+default-features = false
+features = ["diagnostics"]
 
 [dependencies.blake3]
 version = "^1.0.0"
@@ -47,6 +47,3 @@ optional = true
 [dependencies.md5]
 version = "^0.7.0"
 optional = true
-
-[target.'cfg(target_os = "windows")'.dependencies.path-slash]
-version = "^0.1.0"

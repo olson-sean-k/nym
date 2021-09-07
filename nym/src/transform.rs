@@ -3,17 +3,16 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::environment::Environment;
-use crate::glob::GlobError;
 use crate::manifest::{Manifest, ManifestError, Routing};
-use crate::pattern::{FromPattern, PatternError, ToPattern};
+use crate::pattern::{FromPattern, FromPatternError, ToPattern, ToPatternError};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TransformError {
-    #[error("failed to apply glob: {0}")]
-    Glob(GlobError),
+    #[error("failed to walk tree: {0}")]
+    PatternWalk(FromPatternError),
     #[error("failed to resolve to-pattern: {0}")]
-    PatternResolution(PatternError),
+    PatternResolution(ToPatternError),
     #[error("failed to insert route: {0}")]
     RouteInsertion(ManifestError),
     #[error("destination is a directory: `{0}`")]
@@ -56,32 +55,19 @@ impl<'e, 'f, 't> Transform<'e, 'f, 't> {
     where
         M: Routing,
     {
-        #[cfg(windows)]
-        fn normalize(path: impl Into<PathBuf>) -> PathBuf {
-            use path_slash::PathBufExt as _;
-
-            PathBuf::from_slash_lossy(path.into())
-        }
-
-        #[cfg(not(windows))]
-        #[inline(always)]
-        fn normalize(path: impl Into<PathBuf>) -> PathBuf {
-            path.into()
-        }
-
         let mut manifest = Manifest::default();
         for entry in self.from.walk(directory.as_ref(), depth) {
-            let entry = entry.map_err(TransformError::Glob)?;
+            let entry = entry.map_err(TransformError::PatternWalk)?;
             let source = entry.path();
             let mut destination = directory.as_ref().to_path_buf();
             destination.push(
                 self.to
-                    .resolve(&source, entry.captures())
+                    .resolve(&source, entry.matched())
                     .map_err(TransformError::PatternResolution)?,
             );
             self.verify_route_policy(source, &destination)?;
             manifest
-                .insert(normalize(source), normalize(destination))
+                .insert(source, destination)
                 .map_err(TransformError::RouteInsertion)?;
         }
         Ok(manifest)

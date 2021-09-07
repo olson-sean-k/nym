@@ -1,12 +1,21 @@
 use itertools::Itertools;
+use miette::Report;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
+use wax::{Glob, GlobError, WalkEntry};
 
-use crate::glob::{Glob, GlobError, WalkEntry};
+// TODO: This is a temporary stopgap. Do not convert to a `Report` immediately.
+//       Refactor errors and propagate diagnostics such that binaries can decide
+//       how to use them (if at all).
+#[derive(Debug, Error)]
+#[error("{0:?}")]
+pub struct FromPatternError(Report);
 
-// NOTE: If and when additional from-patterns are supported (such as raw binary
-//       regular expressions), `FromPattern` will no longer be so trivial.
-//       Moreover, glob types like `Entry` and `Captures` will need to be
-//       abstracted away (and `Selector` can be re-introduced).
+impl<'t> From<GlobError<'t>> for FromPatternError {
+    fn from(error: GlobError<'t>) -> Self {
+        FromPatternError(Report::from(error.into_owned()))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct FromPattern<'t> {
@@ -15,11 +24,17 @@ pub struct FromPattern<'t> {
 }
 
 impl<'t> FromPattern<'t> {
-    pub fn walk<'a>(
-        &'a self,
-        directory: impl 'a + AsRef<Path>,
+    pub fn new(text: &'t str) -> Result<Self, FromPatternError> {
+        Glob::partitioned(text)
+            .map(|(prefix, glob)| FromPattern { prefix, glob })
+            .map_err(From::from)
+    }
+
+    pub fn walk(
+        &self,
+        directory: impl AsRef<Path>,
         depth: usize,
-    ) -> impl 'a + Iterator<Item = Result<WalkEntry, GlobError>> {
+    ) -> impl Iterator<Item = Result<WalkEntry, FromPatternError>> {
         self.glob
             .walk(directory.as_ref().join(&self.prefix), depth)
             .filter_map_ok(|entry| {
@@ -30,11 +45,10 @@ impl<'t> FromPattern<'t> {
                     None
                 }
             })
+            .map(|result| result.map_err(From::from))
     }
-}
 
-impl<'t> From<(PathBuf, Glob<'t>)> for FromPattern<'t> {
-    fn from((prefix, glob): (PathBuf, Glob<'t>)) -> Self {
-        FromPattern { prefix, glob }
+    pub fn has_semantic_literals(&self) -> bool {
+        self.glob.has_semantic_literals()
     }
 }

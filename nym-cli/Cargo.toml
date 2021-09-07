@@ -46,6 +46,11 @@ thiserror = "^1.0.0"
 version = "^0.7.0"
 default-features = false
 
+[dependencies.miette]
+version = "^3.0.0"
+default-features = false
+features = ["fancy"]
+
 [dependencies.nym]
 version = "^0.1.0"
 path = "../nym"

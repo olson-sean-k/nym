@@ -4,17 +4,37 @@ use chrono::offset::Local;
 use chrono::DateTime;
 use std::borrow::Cow;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::str::{self, FromStr};
+use thiserror::Error;
+use wax::MatchedText;
 
-use crate::glob::Captures;
 use crate::memoize::Memoized;
 use crate::pattern::to::token::{
     Capture, Condition, Identifier, NonEmptyCase, Property, PropertyFormat, Subject, Substitution,
     TextFormatter, Token,
 };
-use crate::pattern::PatternError;
 use crate::text;
+
+type NomError<T> = nom::Err<(T, nom::error::ErrorKind)>;
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ToPatternError {
+    #[error("capture not found in from-pattern")]
+    CaptureNotFound,
+    #[error("failed to parse to-pattern: {0}")]
+    Parse(NomError<String>),
+    #[error("failed to read property in to-pattern: {0}")]
+    Property(io::Error),
+}
+
+impl<'i> From<NomError<&'i str>> for ToPatternError {
+    fn from(error: NomError<&'i str>) -> Self {
+        ToPatternError::Parse(error.to_owned())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ToPattern<'t> {
@@ -22,7 +42,7 @@ pub struct ToPattern<'t> {
 }
 
 impl<'t> ToPattern<'t> {
-    pub fn new(text: &'t str) -> Result<Self, PatternError> {
+    pub fn new(text: &'t str) -> Result<Self, ToPatternError> {
         token::parse(text).map(|tokens| ToPattern { tokens })
     }
 
@@ -35,8 +55,8 @@ impl<'t> ToPattern<'t> {
     pub fn resolve(
         &self,
         source: impl AsRef<Path>,
-        captures: &Captures<'_>,
-    ) -> Result<String, PatternError> {
+        matched: &MatchedText<'_>,
+    ) -> Result<String, ToPatternError> {
         #[cfg(feature = "property-b3sum")]
         let mut b3sum =
             Memoized::from(|| fs::read(source.as_ref()).map(|data| blake3::hash(data.as_ref())));
@@ -64,44 +84,45 @@ impl<'t> ToPattern<'t> {
                             ref identifier,
                             ref condition,
                         }) => {
-                            let capture = match identifier {
-                                Identifier::Index(ref index) => captures.get(*index),
-                                // TODO: Get captures by name when using
+                            let text = match identifier {
+                                Identifier::Index(ref index) => matched.get(*index),
+                                // TODO: Get matched text by name when using
                                 //       from-patterns that support it.
                                 Identifier::Name(_) => None,
                             }
-                            // Do not include empty captures. Captures that do
-                            // not participate in a match and empty match text
-                            // are treated the same way: the condition operates
-                            // on an empty string.
-                            .filter(|bytes| !bytes.is_empty())
-                            .map(|bytes| str::from_utf8(bytes).map_err(PatternError::Encoding));
-                            let capture: Cow<_> = if let Some(capture) = capture {
-                                capture?.into()
-                            }
-                            else {
-                                "".into()
-                            };
-                            (capture, condition.as_ref())
+                            // Do not include matched text that is empty.
+                            // Captures that do not participate in a match and
+                            // empty text are treated the same way: the
+                            // condition operates on an empty string.
+                            .filter(|text| !text.is_empty())
+                            .map(Cow::from)
+                            .unwrap_or_else(|| "".into());
+                            (text, condition.as_ref())
                         }
                         Subject::Property(ref property) => (
                             match *property {
                                 #[cfg(feature = "property-b3sum")]
-                                Property::B3Sum(ref fmt) => {
-                                    b3sum.get().map_err(PatternError::Property)?.fmt(fmt).into()
-                                }
-                                Property::CTime(ref fmt) => {
-                                    ctime.get().map_err(PatternError::Property)?.fmt(fmt).into()
-                                }
+                                Property::B3Sum(ref fmt) => b3sum
+                                    .get()
+                                    .map_err(ToPatternError::Property)?
+                                    .fmt(fmt)
+                                    .into(),
+                                Property::CTime(ref fmt) => ctime
+                                    .get()
+                                    .map_err(ToPatternError::Property)?
+                                    .fmt(fmt)
+                                    .into(),
                                 #[cfg(feature = "property-md5sum")]
                                 Property::Md5Sum(ref fmt) => md5sum
                                     .get()
-                                    .map_err(PatternError::Property)?
+                                    .map_err(ToPatternError::Property)?
                                     .fmt(fmt)
                                     .into(),
-                                Property::MTime(ref fmt) => {
-                                    mtime.get().map_err(PatternError::Property)?.fmt(fmt).into()
-                                }
+                                Property::MTime(ref fmt) => mtime
+                                    .get()
+                                    .map_err(ToPatternError::Property)?
+                                    .fmt(fmt)
+                                    .into(),
                             },
                             None,
                         ),
@@ -118,7 +139,7 @@ impl<'t> ToPattern<'t> {
 }
 
 impl<'t> TryFrom<&'t str> for ToPattern<'t> {
-    type Error = PatternError;
+    type Error = ToPatternError;
 
     fn try_from(text: &'t str) -> Result<Self, Self::Error> {
         ToPattern::new(text)
@@ -126,7 +147,7 @@ impl<'t> TryFrom<&'t str> for ToPattern<'t> {
 }
 
 impl FromStr for ToPattern<'static> {
-    type Err = PatternError;
+    type Err = ToPatternError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         ToPattern::new(text).map(|pattern| pattern.into_owned())

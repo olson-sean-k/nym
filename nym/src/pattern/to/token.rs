@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::fmt::Display;
 use std::num::ParseIntError;
 
-use crate::pattern::PatternError;
+use crate::pattern::to::ToPatternError;
 use crate::text::Alignment;
 
 #[derive(Clone, Debug)]
@@ -302,7 +302,7 @@ impl From<String> for Token<'static> {
     }
 }
 
-pub fn parse(text: &str) -> Result<Vec<Token>, PatternError> {
+pub fn parse(text: &str) -> Result<Vec<Token>, ToPatternError> {
     use nom::bytes::complete as bytes;
     use nom::character::complete as character;
     use nom::error::{FromExternalError, ParseError};
