@@ -1,21 +1,8 @@
 use itertools::Itertools;
-use miette::Report;
 use std::path::{Path, PathBuf};
-use thiserror::Error;
 use wax::{Glob, GlobError, WalkEntry};
 
-// TODO: This is a temporary stopgap. Do not convert to a `Report` immediately.
-//       Refactor errors and propagate diagnostics such that binaries can decide
-//       how to use them (if at all).
-#[derive(Debug, Error)]
-#[error("{0:?}")]
-pub struct FromPatternError(Report);
-
-impl<'t> From<GlobError<'t>> for FromPatternError {
-    fn from(error: GlobError<'t>) -> Self {
-        FromPatternError(Report::from(error.into_owned()))
-    }
-}
+pub type FromPatternError = GlobError<'static>;
 
 #[derive(Clone, Debug)]
 pub struct FromPattern<'t> {
@@ -27,7 +14,7 @@ impl<'t> FromPattern<'t> {
     pub fn new(text: &'t str) -> Result<Self, FromPatternError> {
         Glob::partitioned(text)
             .map(|(prefix, glob)| FromPattern { prefix, glob })
-            .map_err(From::from)
+            .map_err(GlobError::into_owned)
     }
 
     pub fn walk(

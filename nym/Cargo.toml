@@ -28,17 +28,11 @@ bimap = "^0.6.0"
 chrono = "^0.4.0"
 faccess = "^0.2.0"
 itertools = "^0.10.0"
-miette = "^3.0.0"
 nom = "^7.0.0"
 smallvec = "^1.5.0"
 thiserror = "^1.0.0"
 titlecase = "^1.1.0"
 unicode-width = "^0.1.0"
-
-[dependencies.wax]
-version = "^0.3.0"
-default-features = false
-features = ["diagnostics"]
 
 [dependencies.blake3]
 version = "^1.0.0"
@@ -47,3 +41,12 @@ optional = true
 [dependencies.md5]
 version = "^0.7.0"
 optional = true
+
+[dependencies.miette]
+version = "^3.0.0"
+default-features = false
+
+[dependencies.wax]
+version = "^0.3.0"
+default-features = false
+features = ["diagnostics"]

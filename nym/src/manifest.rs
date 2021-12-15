@@ -1,4 +1,5 @@
 use bimap::BiMap;
+use miette::Diagnostic;
 use smallvec::{smallvec, SmallVec};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -6,9 +7,10 @@ use thiserror::Error;
 
 type SourceGroup<P> = SmallVec<[P; 1]>;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum ManifestError {
+    #[diagnostic(code(nym::manifest::collision))]
     #[error("detected collision in route destination path: `{0}`")]
     PathCollision(PathBuf),
 }

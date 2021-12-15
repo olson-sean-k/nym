@@ -2,6 +2,7 @@ mod token;
 
 use chrono::offset::Local;
 use chrono::DateTime;
+use miette::Diagnostic;
 use std::borrow::Cow;
 use std::fs;
 use std::io;
@@ -19,13 +20,18 @@ use crate::text;
 
 type NomError<T> = nom::Err<(T, nom::error::ErrorKind)>;
 
-#[derive(Debug, Error)]
+// TODO: Provide snippets in diagnostics. This error should resemble
+//       `wax::GlobError`.
+#[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum ToPatternError {
+    #[diagnostic(code(nym::pattern::capture_not_found))]
     #[error("capture not found in from-pattern")]
     CaptureNotFound,
+    #[diagnostic(code(nym::pattern::parse))]
     #[error("failed to parse to-pattern: {0}")]
     Parse(NomError<String>),
+    #[diagnostic(code(nym::pattern::property))]
     #[error("failed to read property in to-pattern: {0}")]
     Property(io::Error),
 }

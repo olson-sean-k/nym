@@ -1,8 +1,9 @@
 mod option;
 mod terminal;
 
-use anyhow::Error;
+use miette::{IntoDiagnostic, Result};
 use std::path::PathBuf;
+use std::process;
 use structopt::StructOpt;
 
 use nym::actuator::{Copy, HardLink, Move, Operation, SoftLink};
@@ -34,17 +35,18 @@ impl Label for SoftLink {
 }
 
 trait FromPatternExt<'t>: Sized {
-    fn new_with_warnings(text: &'t str) -> Result<Self, Error>;
+    fn new_with_warnings(text: &'t str) -> Result<Self>;
 }
 
 impl<'t> FromPatternExt<'t> for FromPattern<'t> {
-    fn new_with_warnings(text: &'t str) -> Result<Self, Error> {
+    fn new_with_warnings(text: &'t str) -> Result<Self> {
         let from = FromPattern::new(text)?;
         if from.has_semantic_literals() {
             terminal::warning(
                 "from-pattern has semantic literal components that likely match no paths; avoid \
                  semantic components like `..` after wildcards and other variant components.",
-            )?;
+            )
+            .into_diagnostic()?;
         }
         Ok(from)
     }
@@ -59,7 +61,7 @@ struct Program {
 }
 
 impl Program {
-    pub fn run(&mut self) -> Result<(), Error> {
+    pub fn run(&mut self) -> Result<()> {
         terminal::toggle_color_output(self.command.common_option_group().color);
         match self.command {
             Command::Append { .. } => todo!(
@@ -79,7 +81,7 @@ impl Program {
                 let from = FromPattern::new_with_warnings(from)?;
                 let mut output = Terminal::with_output_process(&mut options.pager, options.paging);
                 for entry in from.walk(&options.directory, options.depth + 1).flatten() {
-                    entry.path().print(&mut output)?;
+                    entry.path().print(&mut output).into_diagnostic()?;
                 }
                 Ok(())
             }
@@ -254,17 +256,14 @@ struct UnparsedTransform {
 }
 
 impl UnparsedTransform {
-    fn parse(&self) -> Result<(FromPattern<'_>, ToPattern<'_>), Error> {
+    fn parse(&self) -> Result<(FromPattern<'_>, ToPattern<'_>)> {
         let from = FromPattern::new_with_warnings(&self.from)?;
         let to = ToPattern::new(&self.to)?;
         Ok((from, to))
     }
 }
 
-fn actuate<A>(
-    options: &mut TransformOptionGroup,
-    transform: &UnparsedTransform,
-) -> Result<(), Error>
+fn actuate<A>(options: &mut TransformOptionGroup, transform: &UnparsedTransform) -> Result<()>
 where
     A: Label + Operation,
 {
@@ -284,26 +283,46 @@ where
             &mut options.common.pager,
             options.common.paging,
             |mut output| manifest.print(&mut output),
-        )?;
+        )
+        .into_diagnostic()?;
         terminal::warning(
             "paths may be ambiguous and undetected collisions may cause overwriting, truncation, \
              and data loss; review patterns and paths carefully.",
-        )?;
+        )
+        .into_diagnostic()?;
     }
     if !terminal::is_interactive(options.interactive)
         || terminal::confirm(format!(
             "Ready to {} into {} files. Continue?",
             A::LABEL,
             manifest.routes().len(),
-        ))?
+        ))
+        .into_diagnostic()?
     {
         for route in manifest.routes().printed() {
-            actuator.write::<A, _>(route)?;
+            actuator.write::<A, _>(route).into_diagnostic()?;
         }
     }
     Ok(())
 }
 
-fn main() -> Result<(), Error> {
-    Program::from_args().run()
+// NOTE: Rust supports `main` functions that return a `Result`, but this
+//       includes some unwanted minimal formatting (errors are prefixed with
+//       "Error: "). In the near future, an alternative crate will be used to
+//       print diagnostic reports and this prefix may interfere with its
+//       formatting.
+fn main() {
+    //Reporter::install(|| {
+    //    ReporterBuilder::default()
+    //        .with_glyph_set(GlyphSet::unicode())
+    //        .with_style_set(StyleSet::ansi())
+    //        .build()
+    //}).expect("failed to configure error reporting");
+    process::exit(match Program::from_args().run() {
+        Ok(_) => 0,
+        Err(report) => {
+            eprintln!("{:?}", report);
+            1
+        }
+    })
 }
