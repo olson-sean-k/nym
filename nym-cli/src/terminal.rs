@@ -6,7 +6,6 @@ use itertools::{Itertools as _, Position};
 use lazy_static::lazy_static;
 use lscolors::{self, LsColors};
 use std::cmp;
-use std::convert::{TryFrom, TryInto};
 use std::io::{self, Read, Write};
 use std::path::Path;
 

@@ -3,7 +3,6 @@ mod token;
 use chrono::offset::Local;
 use chrono::DateTime;
 use std::borrow::Cow;
-use std::convert::TryFrom;
 use std::fs;
 use std::path::Path;
 use std::str::{self, FromStr};
