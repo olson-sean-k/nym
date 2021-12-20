@@ -6,13 +6,14 @@ use std::path::PathBuf;
 use std::process;
 use structopt::StructOpt;
 
-use nym::actuator::{Copy, HardLink, Move, Operation, SoftLink};
-use nym::environment::{Environment, Policy};
-use nym::manifest::Manifest;
+use nym::actuator::{Actuation, Copy, HardLink, Move, Operation, SoftLink};
+use nym::manifest::Endpoint;
 use nym::pattern::{FromPattern, ToPattern};
+use nym::policy::Policy;
+use nym::transform::Transform;
 
 use crate::option::{ChildCommand, Toggle};
-use crate::terminal::{IteratorExt as _, Print, Terminal};
+use crate::terminal::{Print, Terminal};
 
 trait Label {
     const LABEL: &'static str;
@@ -263,26 +264,27 @@ impl UnparsedTransform {
     }
 }
 
-fn actuate<A>(options: &mut TransformOptionGroup, transform: &UnparsedTransform) -> Result<()>
+fn actuate<W>(options: &mut TransformOptionGroup, transform: &UnparsedTransform) -> Result<()>
 where
-    A: Label + Operation,
+    W: Label + Operation,
 {
-    let environment = Environment::new(Policy {
-        parents: options.parents,
-        overwrite: options.overwrite,
-    });
     let (from, to) = transform.parse()?;
-
-    let transform = environment.transform(from, to);
-    let actuator = environment.actuator();
-    let manifest: Manifest<A::Routing> =
+    let transform = Transform::new(
+        Policy {
+            parents: options.parents,
+            overwrite: options.overwrite,
+        },
+        from,
+        to,
+    );
+    let actuation: Actuation<W> =
         transform.read(&options.common.directory, options.common.depth + 1)?;
 
     if !options.quiet {
         Terminal::with_output_process_scoped(
             &mut options.common.pager,
             options.common.paging,
-            |mut output| manifest.print(&mut output),
+            |mut output| actuation.manifest().print(&mut output),
         )
         .into_diagnostic()?;
         terminal::warning(
@@ -291,17 +293,19 @@ where
         )
         .into_diagnostic()?;
     }
+    let _n = actuation.manifest().routes().len();
+    let m: usize = actuation
+        .manifest()
+        .routes()
+        .map(|route| Endpoint::paths(route.destination()).len())
+        .sum();
     if !terminal::is_interactive(options.interactive)
-        || terminal::confirm(format!(
-            "Ready to {} into {} files. Continue?",
-            A::LABEL,
-            manifest.routes().len(),
-        ))
-        .into_diagnostic()?
+        || terminal::confirm(format!("Ready to {} into {} files. Continue?", W::LABEL, m,))
+            .into_diagnostic()?
     {
-        for route in manifest.routes().printed() {
-            actuator.write::<A, _>(route).into_diagnostic()?;
-        }
+        // TODO: Use `write_with` to print progress. This will require `n`,
+        //       which is defined above.
+        let _ = actuation.write().into_diagnostic()?;
     }
     Ok(())
 }

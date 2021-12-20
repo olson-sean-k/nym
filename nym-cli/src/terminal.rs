@@ -9,7 +9,8 @@ use std::cmp;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-use nym::manifest::{Manifest, Routing};
+use nym::actuator::Operation;
+use nym::manifest::{Endpoint, Manifest};
 
 use crate::option::{ChildCommand, Toggle, Wait};
 
@@ -274,16 +275,16 @@ impl<'p> Print for &'p Path {
     }
 }
 
-impl<M> Print for Manifest<M>
+impl<W> Print for Manifest<W>
 where
-    M: Routing,
+    W: Operation,
 {
     fn print(&self, output: &mut (impl Page + Write)) -> io::Result<()> {
         let routes = self.routes();
         let margin = ((routes.len() as f64).log10() as usize) + 1;
         let width = width(output, margin + 6);
         for (n, route) in routes.enumerate() {
-            for source in route.sources().with_position() {
+            for source in route.source().paths().with_position() {
                 match source {
                     Position::First(source) | Position::Only(source) => {
                         let source = source.to_string_lossy();
@@ -336,27 +337,32 @@ where
                     }
                 }
             }
-            let destination = route.destination().to_string_lossy();
-            for line in textwrap::wrap(destination.as_ref(), width)
-                .into_iter()
-                .with_position()
-            {
-                match line {
-                    Position::First(line) | Position::Only(line) => writeln!(
-                        output,
-                        "{: >width$} {}",
-                        STYLE_LINE.apply_to("╰─⯈"),
-                        STYLE_DESTINATION_PATH.apply_to(line),
-                        width = margin + 5,
-                    ),
-                    Position::Middle(line) | Position::Last(line) => writeln!(
-                        output,
-                        "{: >width$}{}",
-                        "",
-                        STYLE_DESTINATION_PATH.apply_to(line),
-                        width = margin + 6,
-                    ),
-                }?;
+            // TODO: This does not print properly when there is more than one
+            //       destination path. Fix this after migrating to the `hako`
+            //       crate.
+            for destination in route.destination().paths() {
+                let destination = destination.to_string_lossy();
+                for line in textwrap::wrap(destination.as_ref(), width)
+                    .into_iter()
+                    .with_position()
+                {
+                    match line {
+                        Position::First(line) | Position::Only(line) => writeln!(
+                            output,
+                            "{: >width$} {}",
+                            STYLE_LINE.apply_to("╰─⯈"),
+                            STYLE_DESTINATION_PATH.apply_to(line),
+                            width = margin + 5,
+                        ),
+                        Position::Middle(line) | Position::Last(line) => writeln!(
+                            output,
+                            "{: >width$}{}",
+                            "",
+                            STYLE_DESTINATION_PATH.apply_to(line),
+                            width = margin + 6,
+                        ),
+                    }?;
+                }
             }
         }
         Ok(())

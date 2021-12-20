@@ -1,11 +1,11 @@
 use bimap::BiMap;
 use miette::Diagnostic;
-use smallvec::{smallvec, SmallVec};
-use std::marker::PhantomData;
+use smallvec::{Array, SmallVec};
+use std::fmt::{self, Debug, Formatter};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-type SourceGroup<P> = SmallVec<[P; 1]>;
+use crate::actuator::{Copy, HardLink, Move, Operation, SoftLink};
 
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
@@ -15,39 +15,98 @@ pub enum ManifestError {
     PathCollision(PathBuf),
 }
 
-pub struct Route<M, P>
-where
-    P: AsRef<Path>,
-{
-    sources: SourceGroup<P>,
-    destination: P,
-    phantom: PhantomData<M>,
+pub trait Endpoint {
+    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = &'_ Path>>;
 }
 
-impl<M, P> Route<M, P>
-where
-    P: AsRef<Path>,
-{
-    pub fn sources(&self) -> impl ExactSizeIterator<Item = &'_ P> {
-        self.sources.iter()
-    }
-
-    pub fn destination(&self) -> &P {
-        &self.destination
+impl Endpoint for PathBuf {
+    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = &'_ Path>> {
+        Box::new([self.as_ref()].into_iter())
     }
 }
 
-#[derive(Default)]
-pub struct Manifest<M>
+impl<const N: usize> Endpoint for SmallVec<[PathBuf; N]>
 where
-    M: Routing,
+    [PathBuf; N]: Array<Item = PathBuf>,
 {
-    router: M,
+    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = &'_ Path>> {
+        Box::new(self.iter().map(|path| path.as_ref()))
+    }
 }
 
-impl<M> Manifest<M>
+pub trait Router: Clone + Default {
+    type Source: Endpoint;
+    type Destination: Endpoint;
+
+    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError>;
+
+    fn routes(&self) -> Box<dyn '_ + ExactSizeIterator<Item = Route<'_, Self>>>;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Bijective {
+    bimap: BiMap<PathBuf, PathBuf>,
+}
+
+impl Router for Bijective {
+    type Source = PathBuf;
+    type Destination = PathBuf;
+
+    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError> {
+        self.bimap
+            .insert_no_overwrite(source, destination)
+            .map_err(|(_, destination)| ManifestError::PathCollision(destination))
+    }
+
+    fn routes(&self) -> Box<dyn '_ + ExactSizeIterator<Item = Route<'_, Self>>> {
+        Box::new(self.bimap.iter().map(|(source, destination)| Route {
+            source,
+            destination,
+        }))
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Route<'e, R>
 where
-    M: Routing,
+    R: Router,
+{
+    source: &'e R::Source,
+    destination: &'e R::Destination,
+}
+
+impl<'e, R> Route<'e, R>
+where
+    R: Router,
+{
+    pub fn source(&self) -> &R::Source {
+        self.source
+    }
+
+    pub fn destination(&self) -> &R::Destination {
+        self.destination
+    }
+}
+
+#[derive(Clone)]
+pub enum ManifestEnvelope {
+    //Append(Manifest<Append>),
+    Copy(Manifest<Copy>),
+    HardLink(Manifest<HardLink>),
+    Move(Manifest<Move>),
+    SoftLink(Manifest<SoftLink>),
+}
+
+pub struct Manifest<W>
+where
+    W: Operation,
+{
+    router: W::Router,
+}
+
+impl<W> Manifest<W>
+where
+    W: Operation,
 {
     pub fn insert(
         &mut self,
@@ -57,42 +116,42 @@ where
         self.router.insert(source.into(), destination.into())
     }
 
-    pub fn routes(&self) -> impl ExactSizeIterator<Item = Route<M, &'_ Path>> {
-        self.router.paths().map(|(sources, destination)| Route {
-            sources,
-            destination,
-            phantom: PhantomData,
-        })
+    pub fn routes(&self) -> impl ExactSizeIterator<Item = Route<'_, W::Router>> {
+        self.router.routes()
     }
 }
 
-pub trait Routing: Default {
-    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError>;
-
-    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SourceGroup<&'_ Path>, &'_ Path)>>;
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Bijective {
-    inner: BiMap<PathBuf, PathBuf>,
-}
-
-impl Routing for Bijective {
-    fn insert(&mut self, source: PathBuf, destination: PathBuf) -> Result<(), ManifestError> {
-        if self.inner.contains_right(&destination) {
-            Err(ManifestError::PathCollision(destination))
-        }
-        else {
-            self.inner.insert_no_overwrite(source, destination).unwrap();
-            Ok(())
+impl<W> Clone for Manifest<W>
+where
+    W: Operation,
+{
+    fn clone(&self) -> Self {
+        Manifest {
+            router: self.router.clone(),
         }
     }
+}
 
-    fn paths(&self) -> Box<dyn '_ + ExactSizeIterator<Item = (SourceGroup<&'_ Path>, &'_ Path)>> {
-        Box::new(
-            self.inner
-                .iter()
-                .map(|(source, destination)| (smallvec![source.as_ref()], destination.as_ref())),
-        )
+impl<W> Debug for Manifest<W>
+where
+    W: Operation,
+    W::Router: Debug,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Manifest")
+            .field("router", &self.router)
+            .finish()
+    }
+}
+
+impl<W> Default for Manifest<W>
+where
+    W: Operation,
+{
+    fn default() -> Self {
+        Manifest {
+            router: Default::default(),
+        }
     }
 }

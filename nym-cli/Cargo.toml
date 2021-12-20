@@ -32,13 +32,12 @@ property-b3sum = ['nym/property-b3sum']
 property-md5sum = ['nym/property-md5sum']
 
 [dependencies]
-console = "^0.14.0"
-dialoguer = "^0.8.0"
-indicatif = "^0.15.0"
+console = "^0.15.0"
+dialoguer = "^0.9.0"
+indicatif = "^0.16.0"
 itertools = "^0.10.0"
 lazy_static = "^1.4.0"
 structopt = "^0.3.0"
-textwrap = "^0.13.0"
 thiserror = "^1.0.0"
 
 [dependencies.lscolors]
@@ -53,3 +52,7 @@ features = ["fancy"]
 [dependencies.nym]
 version = "^0.1.0"
 path = "../nym"
+
+[dependencies.textwrap]
+version = "^0.14.0"
+default-features = false
