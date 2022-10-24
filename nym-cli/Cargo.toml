@@ -38,7 +38,7 @@ indicatif = "^0.15.0"
 itertools = "^0.10.0"
 lazy_static = "^1.4.0"
 structopt = "^0.3.0"
-textwrap = "^0.13.0"
+textwrap = "^0.16.0"
 thiserror = "^1.0.0"
 
 [dependencies.lscolors]
